@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>retro-web model host</title>
+<style>
+  body { font: 13px Tahoma, Verdana, sans-serif; margin: 16px; color: #000; background: #c0c0c0; }
+  pre { background: #fff; border: 2px inset #fff; padding: 8px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h3>retro-web model host</h3>
+<p>This page runs the in-browser designer model (WebLLM) for the retro-web userscript.
+It is normally loaded inside a hidden iframe and talks to the userscript over <code>postMessage</code>.
+Model weights are cached by this origin, so they download once no matter which site you visit.</p>
+<p>Status: <strong id="status">waiting for a parent window…</strong></p>
+<pre id="log"></pre>
+<script src="host.js"></script>
+</body>
+</html>

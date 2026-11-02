@@ -1,0 +1,47 @@
+# secrets
+.env
+.env.*
+*.key
+anthropic_key*
+
+# dependencies / build caches
+node_modules/
+.vite/
+.cache/
+
+# model weights, datasets, checkpoints (never commit)
+*.safetensors
+*.bin
+*.gguf
+*.pt
+*.pth
+*.ckpt
+*.wasm.map
+training/data/
+training/checkpoints/
+training/outputs/
+training/merged/
+training/mlc-out/
+training/*.jsonl
+weights/
+models/
+checkpoints/
+datasets/
+
+# eval output
+eval/out/
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.log
+
+# generated dev stub with machine-specific file:// path
+userscript/dist/retro.dev.user.js
