@@ -1,0 +1,253 @@
+/* retro-web asset library — a TOOLKIT, not a theme.
+   Only custom properties and opt-in utility classes. Nothing here restyles a
+   page by itself. Asset file references are inlined as data URIs at build time.
+   Every name below must appear in manifest.json (enforced by a unit test). */
+
+:root {
+  /* ---- icons (16x16 pixel art). Use: background-image: var(--icon-home) ---- */
+  --icon-home: svg("icons/home.svg");
+  --icon-mail: svg("icons/mail.svg");
+  --icon-search: svg("icons/search.svg");
+  --icon-cart: svg("icons/cart.svg");
+  --icon-user: svg("icons/user.svg");
+  --icon-folder: svg("icons/folder.svg");
+  --icon-file: svg("icons/file.svg");
+  --icon-star: svg("icons/star.svg");
+  --icon-heart: svg("icons/heart.svg");
+  --icon-arrow-left: svg("icons/arrow-left.svg");
+  --icon-arrow-right: svg("icons/arrow-right.svg");
+  --icon-arrow-up: svg("icons/arrow-up.svg");
+  --icon-arrow-down: svg("icons/arrow-down.svg");
+  --icon-info: svg("icons/info.svg");
+  --icon-warning: svg("icons/warning.svg");
+  --icon-gear: svg("icons/gear.svg");
+  --icon-music: svg("icons/music.svg");
+  --icon-image: svg("icons/image.svg");
+  --icon-link: svg("icons/link.svg");
+  --icon-download: svg("icons/download.svg");
+  --icon-rss: svg("icons/rss.svg");
+  --icon-chat: svg("icons/chat.svg");
+  --icon-lock: svg("icons/lock.svg");
+  --icon-globe: svg("icons/globe.svg");
+  --icon-new: svg("icons/new.svg");
+  --icon-hot: svg("icons/hot.svg");
+  --icon-check: svg("icons/check.svg");
+  --icon-close: svg("icons/close.svg");
+  --icon-menu: svg("icons/menu.svg");
+  --icon-calendar: svg("icons/calendar.svg");
+  --icon-clock: svg("icons/clock.svg");
+  --icon-print: svg("icons/print.svg");
+  --icon-tag: svg("icons/tag.svg");
+  --icon-bookmark: svg("icons/bookmark.svg");
+  --icon-play: svg("icons/play.svg");
+  --icon-placeholder: svg("icons/placeholder.svg");
+
+  /* ---- tileable backgrounds. Use: background-image: var(--bg-starfield) ---- */
+  --bg-starfield: svg("backgrounds/starfield.svg");
+  --bg-tile-gray: svg("backgrounds/tile-gray-checker.svg");
+  --bg-tile-hazard: svg("backgrounds/tile-hazard.svg");
+  --bg-tile-dots: svg("backgrounds/tile-dots.svg");
+  --bg-tile-grid: svg("backgrounds/tile-grid.svg");
+  --bg-tile-clouds: svg("backgrounds/tile-clouds.svg");
+  --bg-tile-noise: svg("backgrounds/tile-noise.svg");
+  --bg-tile-pinstripe: svg("backgrounds/tile-pinstripe.svg");
+  --bg-tile-scanlines: svg("backgrounds/tile-scanlines.svg");
+  --bg-tile-glitter: svg("backgrounds/tile-glitter.svg");
+  --bg-tile-hearts: svg("backgrounds/tile-hearts.svg");
+  --bg-tile-brushed-metal: svg("backgrounds/tile-brushed-metal.svg");
+  --bg-tile-stars-blue: svg("backgrounds/tile-stars-blue.svg");
+  --bg-tile-plaid-blue: svg("backgrounds/tile-plaid-blue.svg");
+
+  /* ---- gradients. Use: background-image: var(--grad-glossy-blue) ---- */
+  --grad-glossy-blue: linear-gradient(180deg, #8fc4f5 0%, #3b8dd6 48%, #1f6fbf 52%, #4ea1ea 100%);
+  --grad-glossy-green: linear-gradient(180deg, #c7ef7f 0%, #8cc63f 48%, #6ea52a 52%, #9ad64a 100%);
+  --grad-glossy-orange: linear-gradient(180deg, #ffd27f 0%, #f7941d 48%, #d97a0a 52%, #ffa83a 100%);
+  --grad-glossy-black: linear-gradient(180deg, #666 0%, #222 48%, #000 52%, #333 100%);
+  --grad-chrome: linear-gradient(180deg, #fff 0%, #cfd3d8 30%, #8a9099 50%, #d9dde2 70%, #fff 100%);
+  --grad-titlebar: linear-gradient(90deg, #000080, #1084d0);
+  --grad-aqua: linear-gradient(180deg, #e6f0ff 0%, #a7c7f0 45%, #5e95e0 55%, #9fc1f2 100%);
+  --grad-navy-header: linear-gradient(180deg, #4a6fa5 0%, #003366 100%);
+  --grad-rainbow: linear-gradient(90deg, #f00, #ff7f00, #ff0, #0f0, #00f, #4b0082, #8f00ff);
+  --grad-metal: linear-gradient(90deg, #bbb, #eee 40%, #999 60%, #ddd);
+
+  /* ---- font stacks (system fonts of the era) ---- */
+  --font-comic: "Comic Sans MS", "Comic Sans", "Chalkboard SE", cursive;
+  --font-verdana: Verdana, Geneva, sans-serif;
+  --font-tahoma: Tahoma, "Segoe UI", Geneva, sans-serif;
+  --font-ms-sans: "MS Sans Serif", "Microsoft Sans Serif", Tahoma, sans-serif;
+  --font-arial: Arial, Helvetica, sans-serif;
+  --font-arial-black: "Arial Black", Impact, Arial, sans-serif;
+  --font-impact: Impact, "Arial Narrow Bold", "Arial Black", sans-serif;
+  --font-times: "Times New Roman", Times, serif;
+  --font-georgia: Georgia, "Times New Roman", serif;
+  --font-trebuchet: "Trebuchet MS", "Lucida Grande", Verdana, sans-serif;
+  --font-lucida: "Lucida Grande", "Lucida Sans Unicode", Verdana, sans-serif;
+  --font-courier: "Courier New", Courier, "Lucida Console", monospace;
+
+  /* ---- cursors. Use: cursor: var(--cursor-arrow) ---- */
+  --cursor-arrow: svg("cursors/cursor-arrow.svg") 1 1, auto;
+  --cursor-hand: svg("cursors/cursor-hand.svg") 6 1, pointer;
+  --cursor-sparkle: svg("cursors/cursor-sparkle.svg") 8 8, auto;
+
+  /* ---- recipe values (reusable single-property values) ---- */
+  --bevel-out: 2px outset #ffffff;
+  --bevel-in: 2px inset #ffffff;
+  --win-gray: #c0c0c0;
+  --win-navy: #000080;
+  --win-shadow: inset -1px -1px #0a0a0a, inset 1px 1px #ffffff, inset -2px -2px #808080, inset 2px 2px #dfdfdf;
+  --win-shadow-in: inset 1px 1px #0a0a0a, inset -1px -1px #ffffff, inset 2px 2px #808080, inset -2px -2px #dfdfdf;
+  --glossy-shadow: 0 1px 3px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.6);
+  --text-glow: 0 0 4px currentColor, 0 0 8px currentColor;
+  --rainbow-text: linear-gradient(90deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f);
+}
+
+/* ---- components (opt-in utility classes; attach with the apply-class directive) ---- */
+
+.retro-bevel-btn {
+  background: var(--win-gray);
+  color: #000;
+  border: var(--bevel-out);
+  box-shadow: var(--win-shadow);
+  font: 11px var(--font-ms-sans);
+  padding: 3px 12px;
+  border-radius: 0;
+  text-decoration: none;
+  cursor: var(--cursor-hand);
+}
+.retro-bevel-btn:active { box-shadow: var(--win-shadow-in); }
+
+.retro-bevel-inset {
+  background: #fff;
+  border: var(--bevel-in);
+  box-shadow: var(--win-shadow-in);
+  padding: 2px 4px;
+  border-radius: 0;
+}
+
+.retro-window {
+  background: var(--win-gray);
+  border: var(--bevel-out);
+  box-shadow: var(--win-shadow), 2px 2px 6px rgba(0,0,0,.35);
+  padding: 3px;
+  color: #000;
+  font: 11px var(--font-ms-sans);
+  border-radius: 0;
+}
+
+.retro-titlebar {
+  background: var(--grad-titlebar);
+  color: #fff;
+  font: bold 11px var(--font-ms-sans);
+  padding: 3px 6px;
+  margin: 0 0 4px 0;
+  display: block;
+  letter-spacing: 0;
+}
+
+.retro-panel {
+  background: #fff;
+  border: 1px solid #000;
+  box-shadow: 2px 2px 0 #000;
+  padding: 8px;
+}
+
+.retro-glossy-btn {
+  background-image: var(--grad-glossy-blue);
+  color: #fff;
+  text-shadow: 0 -1px 0 rgba(0,0,0,.4);
+  border: 1px solid #1a5a99;
+  border-radius: 6px;
+  box-shadow: var(--glossy-shadow);
+  padding: 6px 16px;
+  font: bold 13px var(--font-lucida);
+  text-decoration: none;
+}
+
+.retro-pill {
+  border-radius: 999px;
+  background-image: var(--grad-chrome);
+  border: 1px solid #777;
+  color: #000;
+  padding: 4px 14px;
+  text-decoration: none;
+  font: bold 12px var(--font-verdana);
+}
+
+.retro-hr-rainbow {
+  border: 0;
+  height: 4px;
+  background-image: var(--grad-rainbow);
+  margin: 12px 0;
+}
+
+.retro-blink { animation: retro-blink 1s steps(2, start) infinite; }
+@keyframes retro-blink { to { visibility: hidden; } }
+
+.marquee-bar {
+  overflow: hidden;
+  white-space: nowrap;
+  background: #000;
+  color: #ff0;
+  font: bold 12px var(--font-verdana);
+  padding: 2px 0;
+}
+.marquee-bar > * {
+  display: inline-block;
+  padding-left: 100%;
+  animation: retro-marquee 14s linear infinite;
+  white-space: nowrap;
+}
+@keyframes retro-marquee { to { transform: translateX(-100%); } }
+
+.hit-counter {
+  display: inline-block;
+  background: #000;
+  color: #0f0;
+  font: bold 14px var(--font-courier);
+  letter-spacing: 2px;
+  padding: 2px 6px;
+  border: 2px inset #808080;
+}
+.hit-counter:empty::after { content: "0013370"; }
+
+.under-construction {
+  background-image: var(--bg-tile-hazard);
+  color: #000;
+  font: bold 12px var(--font-arial-black);
+  text-align: center;
+  padding: 6px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.under-construction:empty::after { content: "\1F6A7 Under construction \1F6A7"; background: #ffcc00; padding: 0 6px; }
+
+.retro-table-rows > * > tr:nth-child(even),
+.retro-table-rows > tr:nth-child(even),
+.retro-table-rows > :nth-child(even) {
+  background-color: #e5edf5;
+}
+
+.retro-icon-left {
+  background-repeat: no-repeat;
+  background-position: 4px center;
+  background-size: 16px 16px;
+  padding-left: 24px;
+}
+
+.retro-badge-new {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  background: var(--icon-new) no-repeat center / 16px 16px;
+  vertical-align: middle;
+}
+
+.retro-scanlines { background-image: var(--bg-tile-scanlines); }
+
+.retro-sparkle-text {
+  background-image: var(--rainbow-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-weight: bold;
+}

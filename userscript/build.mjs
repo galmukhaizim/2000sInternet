@@ -29,7 +29,7 @@ const assetInliner = {
       const dir = path.dirname(args.path);
       const watchFiles = [args.path];
       let css = await fs.promises.readFile(args.path, 'utf8');
-      css = css.replace(/svg\(\s*["']?([^"')]+?)["']?\s*\)/g, (_m, rel) => {
+      css = css.replace(/svg\(\s*["']?([^"')]+?\.svg)["']?\s*\)/g, (_m, rel) => {
         const file = path.join(dir, rel);
         watchFiles.push(file);
         const uri = svgToDataUri(fs.readFileSync(file, 'utf8'));

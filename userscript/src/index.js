@@ -7,6 +7,8 @@ import { createSlots } from './apply.js';
 import { createPanel, PANEL_HOST_CSS } from './ui/panel.js';
 import { createCspMonitor, describeEnvironment } from './csp.js';
 import { STYLES } from './model/styles.js';
+import { LIBRARY_CSS } from './assets/index.js';
+import { summarizePage } from './summarize.js';
 
 function setState(state, detail = {}) {
   try {
@@ -27,6 +29,7 @@ function main() {
   const env = describeEnvironment(document);
   const slots = createSlots(document);
   slots.panel.set(PANEL_HOST_CSS);
+  slots.library.set(LIBRARY_CSS);
 
   const panel = createPanel({
     doc: document,
@@ -90,6 +93,12 @@ function main() {
     storage.clearApiKey();
     panel.setKeyState(false);
     panel.setStatus('API key removed');
+  });
+  storage.registerMenuCommand('retro-web: log page summary', () => {
+    const { text } = summarizePage(document, { tokenBudget: settings.summaryTokenBudget });
+    console.log('[retro-web] page summary\n' + text);
+    panel.setReport(text);
+    panel.showReport();
   });
   storage.registerMenuCommand('retro-web: toggle on this site', () => {
     const rec = storage.getSiteRecord(hostname) || {};

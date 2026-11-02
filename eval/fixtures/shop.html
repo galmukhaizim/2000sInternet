@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><title>Northwind Outfitters — Jackets</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 Inter, Roboto, Arial, sans-serif; color: #111; background: #fff; }
+  a { color: inherit; text-decoration: none; }
+  .topbar { background: #111; color: #fff; font-size: 12px; text-align: center; padding: 6px; }
+  header.site { display: flex; align-items: center; gap: 32px; padding: 16px 32px; border-bottom: 1px solid #eee; }
+  .brand { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+  nav.cats { display: flex; gap: 20px; flex: 1; }
+  nav.cats a { font-weight: 600; text-transform: uppercase; font-size: 12px; letter-spacing: .5px; }
+  .actions { display: flex; gap: 16px; }
+  .actions a { display: inline-flex; align-items: center; gap: 6px; }
+  .actions svg { width: 18px; height: 18px; }
+  .hero { background: #f3f3f3; padding: 48px 32px; display: flex; justify-content: space-between; align-items: center; }
+  .hero h1 { font-size: 36px; margin: 0 0 8px; }
+  .hero .cta { background: #111; color: #fff; padding: 12px 24px; border-radius: 4px; font-weight: 600; display: inline-block; margin-top: 12px; }
+  .filters { display: flex; gap: 12px; padding: 16px 32px; border-bottom: 1px solid #eee; }
+  .filters select, .filters button { padding: 8px 12px; border: 1px solid #ccc; background: #fff; border-radius: 4px; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; padding: 32px; }
+  .card { border: 1px solid #eee; border-radius: 6px; overflow: hidden; }
+  .card img { width: 100%; height: 220px; object-fit: cover; display: block; background: #ddd; }
+  .card .body { padding: 12px; }
+  .card h3 { margin: 0 0 4px; font-size: 15px; }
+  .price { font-weight: 700; }
+  .price s { color: #999; font-weight: 400; margin-right: 6px; }
+  .card button { width: 100%; margin-top: 10px; padding: 10px; background: #0b6; color: #fff; border: 0; border-radius: 4px; font-weight: 600; display: flex; justify-content: center; align-items: center; gap: 6px; }
+  .card button svg { width: 14px; height: 14px; }
+  .badge { position: absolute; background: #e33; color: #fff; font-size: 11px; padding: 2px 6px; margin: 8px; border-radius: 3px; }
+  .card { position: relative; }
+  footer { background: #fafafa; border-top: 1px solid #eee; padding: 32px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; font-size: 13px; }
+  footer h4 { margin: 0 0 8px; }
+  footer ul { list-style: none; padding: 0; margin: 0; }
+  footer li { margin: 4px 0; }
+</style>
+</head>
+<body>
+<div class="topbar">Free shipping on orders over $75 · 30-day returns</div>
+<header class="site" id="header">
+  <a class="brand" href="/">Northwind</a>
+  <nav class="cats"><a href="/jackets">Jackets</a><a href="/boots">Boots</a><a href="/packs">Packs</a><a href="/sale">Sale</a></nav>
+  <div class="actions">
+    <a href="/search" class="icon-link"><svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" stroke="#111" stroke-width="2" fill="none"/></svg>Search</a>
+    <a href="/account" class="icon-link"><svg viewBox="0 0 16 16"><circle cx="8" cy="6" r="3" fill="#111"/><path d="M2 15c0-4 12-4 12 0z" fill="#111"/></svg>Account</a>
+    <a href="/cart" class="icon-link cart"><svg viewBox="0 0 16 16"><path d="M1 2h3l2 8h7l2-6H5" stroke="#111" stroke-width="2" fill="none"/></svg>Cart (2)</a>
+  </div>
+</header>
+<section class="hero">
+  <div><h1>Shell jackets, finally in stock</h1><p>Waterproof, breathable, and only slightly overpriced.</p><a class="cta" href="/jackets">Shop jackets</a></div>
+  <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='420' height='260'%3E%3Crect width='420' height='260' fill='%23b8c9d9'/%3E%3C/svg%3E" width="420" height="260" alt="">
+</section>
+<div class="filters"><select><option>Sort: Featured</option></select><select><option>Size</option></select><select><option>Color</option></select><button>Filter</button></div>
+<main class="grid" id="products">
+  <div class="card"><span class="badge">NEW</span><img alt=""><div class="body"><h3>Ridge Shell Jacket</h3><div class="price"><s>$249</s>$199</div><button><svg viewBox="0 0 16 16"><path d="M1 2h3l2 8h7l2-6H5" stroke="#fff" stroke-width="2" fill="none"/></svg>Add to cart</button></div></div>
+  <div class="card"><img alt=""><div class="body"><h3>Trail Fleece</h3><div class="price">$89</div><button><svg viewBox="0 0 16 16"><path d="M1 2h3l2 8h7l2-6H5" stroke="#fff" stroke-width="2" fill="none"/></svg>Add to cart</button></div></div>
+  <div class="card"><span class="badge">SALE</span><img alt=""><div class="body"><h3>Summit Down Parka</h3><div class="price"><s>$399</s>$299</div><button><svg viewBox="0 0 16 16"><path d="M1 2h3l2 8h7l2-6H5" stroke="#fff" stroke-width="2" fill="none"/></svg>Add to cart</button></div></div>
+  <div class="card"><img alt=""><div class="body"><h3>Windbreaker Lite</h3><div class="price">$120</div><button><svg viewBox="0 0 16 16"><path d="M1 2h3l2 8h7l2-6H5" stroke="#fff" stroke-width="2" fill="none"/></svg>Add to cart</button></div></div>
+  <div class="card"><img alt=""><div class="body"><h3>Rain Poncho</h3><div class="price">$45</div><button><svg viewBox="0 0 16 16"><path d="M1 2h3l2 8h7l2-6H5" stroke="#fff" stroke-width="2" fill="none"/></svg>Add to cart</button></div></div>
+  <div class="card"><img alt=""><div class="body"><h3>Insulated Vest</h3><div class="price">$110</div><button><svg viewBox="0 0 16 16"><path d="M1 2h3l2 8h7l2-6H5" stroke="#fff" stroke-width="2" fill="none"/></svg>Add to cart</button></div></div>
+  <div class="card"><img alt=""><div class="body"><h3>Softshell Hoodie</h3><div class="price">$140</div><button><svg viewBox="0 0 16 16"><path d="M1 2h3l2 8h7l2-6H5" stroke="#fff" stroke-width="2" fill="none"/></svg>Add to cart</button></div></div>
+  <div class="card"><img alt=""><div class="body"><h3>Anorak Classic</h3><div class="price">$175</div><button><svg viewBox="0 0 16 16"><path d="M1 2h3l2 8h7l2-6H5" stroke="#fff" stroke-width="2" fill="none"/></svg>Add to cart</button></div></div>
+</main>
+<footer id="footer">
+  <div><h4>Shop</h4><ul><li><a href="#">Jackets</a></li><li><a href="#">Boots</a></li><li><a href="#">Packs</a></li></ul></div>
+  <div><h4>Help</h4><ul><li><a href="#">Shipping</a></li><li><a href="#">Returns</a></li><li><a href="#">Size guide</a></li></ul></div>
+  <div><h4>Company</h4><ul><li><a href="#">About</a></li><li><a href="#">Careers</a></li><li><a href="#">Press</a></li></ul></div>
+  <div><h4>Newsletter</h4><input type="email" placeholder="Email"><button>Join</button></div>
+</footer>
+</body>
+</html>

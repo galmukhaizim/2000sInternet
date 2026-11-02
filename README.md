@@ -111,10 +111,24 @@ A small Win98-style window in the bottom-right corner:
 4. `npm run host` and open http://localhost:4173/ — the host page reports
    *open as a standalone page*. The userscript is excluded on that origin.
 
+### Phase 2 — asset library, summarizer, validator
+
+1. `npm test` — validator, summarizer and manifest/library consistency tests.
+2. Reload any page with the dev stub installed. The asset library is now loaded
+   on every page (it is inert: only custom properties and opt-in classes). In
+   devtools run `getComputedStyle(document.documentElement).getPropertyValue('--icon-home')`
+   to see a data URI, or add a class by hand:
+   `document.querySelector('button').classList.add('retro-bevel-btn')`.
+3. Tampermonkey menu → *retro-web: log page summary* prints the model-facing
+   page summary to the console and shows it in the panel's report box. Check
+   that landmarks, colors and selectors make sense on a few sites.
+4. `userscript/dist/retro.lib.js` exposes `RetroWebLib.summarizePage`,
+   `RetroWebLib.validateCss` and friends for harnesses.
+
 ## Status
 
 - [x] Phase 1 — repo, build tooling, userscript shell, dev stub, panel skeleton
-- [ ] Phase 2 — asset library + manifest, page summarizer, validator
+- [x] Phase 2 — asset library + manifest, page summarizer, validator
 - [ ] Phase 3 — in-browser model: design generation, streaming, per-domain cache
 - [ ] Phase 4 — Claude API icon generation, sanitizer, shared icon cache
 - [ ] Phase 5 — inspector + self-correction loop

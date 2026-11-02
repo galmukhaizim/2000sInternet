@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><title>The Daily Byte — Notes on software and coffee</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.6 -apple-system, "Helvetica Neue", Arial, sans-serif; color: #222; background: #fafafa; }
+  a { color: #0a66c2; text-decoration: none; }
+  .site-header { background: #fff; border-bottom: 1px solid #e5e5e5; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 0 20px; }
+  .site-header .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; }
+  .logo { font-weight: 700; font-size: 20px; display: flex; align-items: center; gap: 8px; }
+  .logo svg { width: 24px; height: 24px; }
+  .main-nav { display: flex; gap: 24px; }
+  .main-nav a { font-weight: 500; }
+  .search { display: flex; gap: 6px; }
+  .search input { padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; }
+  .search button { padding: 6px 10px; border: 0; background: #0a66c2; color: #fff; border-radius: 4px; display: inline-flex; align-items: center; }
+  .search button svg { width: 16px; height: 16px; }
+  .layout { display: grid; grid-template-columns: 1fr 320px; gap: 40px; padding: 40px 0; }
+  article h1 { font-size: 40px; line-height: 1.15; margin: 0 0 12px; }
+  .meta { color: #777; font-size: 14px; margin-bottom: 24px; }
+  article p { margin: 0 0 18px; }
+  article img { max-width: 100%; border-radius: 8px; }
+  .tags a { display: inline-block; background: #eef3f8; padding: 4px 10px; border-radius: 999px; font-size: 13px; margin-right: 6px; }
+  .sidebar .widget { background: #fff; border: 1px solid #e5e5e5; border-radius: 8px; padding: 16px; margin-bottom: 24px; }
+  .sidebar h3 { margin: 0 0 12px; font-size: 16px; }
+  .sidebar ul { list-style: none; margin: 0; padding: 0; }
+  .sidebar li { padding: 6px 0; border-top: 1px solid #f0f0f0; }
+  .subscribe button { width: 100%; padding: 10px; background: #0a66c2; color: #fff; border: 0; border-radius: 6px; font-weight: 600; }
+  .site-footer { background: #222; color: #aaa; padding: 32px 0; font-size: 14px; }
+  .site-footer a { color: #ddd; margin-right: 16px; }
+  .social a { display: inline-flex; width: 28px; height: 28px; align-items: center; justify-content: center; background: #333; border-radius: 50%; margin-right: 8px; }
+  .social svg { width: 14px; height: 14px; fill: #fff; }
+</style>
+</head>
+<body>
+<header class="site-header" id="site-header">
+  <div class="wrap">
+    <a class="logo" href="/"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#0a66c2"/></svg>The Daily Byte</a>
+    <nav class="main-nav" aria-label="Main">
+      <a href="/">Home</a><a href="/archive">Archive</a><a href="/about">About</a><a href="/newsletter">Newsletter</a><a href="/contact">Contact</a>
+    </nav>
+    <form class="search" role="search"><input type="search" placeholder="Search posts"><button type="submit" aria-label="Search"><svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" stroke="#fff" stroke-width="2" fill="none"/><path d="M11 11l4 4" stroke="#fff" stroke-width="2"/></svg></button></form>
+  </div>
+</header>
+<main class="wrap layout" id="content">
+  <article class="post">
+    <h1>Why every build system eventually becomes a programming language</h1>
+    <div class="meta">Posted by <a href="/author/sam">Sam</a> · March 3, 2024 · 8 min read</div>
+    <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='360'%3E%3Crect width='800' height='360' fill='%23cfe3f7'/%3E%3C/svg%3E" alt="Hero" width="800" height="360">
+    <p>There is a well-worn joke that every configuration format grows until it contains an ad-hoc, informally specified, bug-ridden implementation of half of Lisp. Build systems are the clearest example.</p>
+    <p>Make started as a tiny dependency tracker. Then it grew variables, then functions, then conditionals. CMake started as a declarative description of a build and now has a Turing-complete scripting language with its own string escaping rules.</p>
+    <h2>The pressure that makes it happen</h2>
+    <p>The pressure comes from the long tail. Ninety percent of projects need a handful of rules. The remaining ten percent need something nobody anticipated, and the maintainers add a hook.</p>
+    <p>Each hook is reasonable on its own. Together they form a language without a grammar.</p>
+    <h2>What to do instead</h2>
+    <p>Pick a real language early. Bazel's Starlark and Gradle's Kotlin are admissions of this. The build description is a program; treat it like one, with tests and linting.</p>
+    <p>None of this means your Makefile is wrong. It means you should notice the moment it stops being data.</p>
+    <blockquote>"The best build system is the one you can explain in a paragraph." — someone, probably</blockquote>
+    <p>Thanks for reading. Replies by email are always welcome.</p>
+    <div class="tags"><a href="/t/build">build systems</a><a href="/t/tools">tools</a><a href="/t/opinion">opinion</a></div>
+  </article>
+  <aside class="sidebar">
+    <div class="widget subscribe"><h3>Newsletter</h3><p>One email a week. No spam.</p><input type="email" placeholder="you@example.com" style="width:100%;padding:8px;margin-bottom:8px;border:1px solid #ccc;border-radius:6px"><button>Subscribe</button></div>
+    <div class="widget"><h3>Recent posts</h3><ul><li><a href="#">On the naming of things</a></li><li><a href="#">Coffee, decaf, and the placebo of ritual</a></li><li><a href="#">A field guide to flaky tests</a></li><li><a href="#">Your logs are a product</a></li></ul></div>
+    <div class="widget"><h3>Archive</h3><ul><li><a href="#">2024 (12)</a></li><li><a href="#">2023 (31)</a></li><li><a href="#">2022 (28)</a></li></ul></div>
+  </aside>
+</main>
+<footer class="site-footer" id="site-footer">
+  <div class="wrap">
+    <div class="social"><a href="#" aria-label="RSS"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/></svg></a><a href="#" aria-label="Mastodon"><svg viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10"/></svg></a></div>
+    <p><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/rss.xml">RSS</a></p>
+    <p>© 2024 The Daily Byte. Built with a text editor.</p>
+  </div>
+</footer>
+</body>
+</html>
