@@ -148,12 +148,30 @@ A small Win98-style window in the bottom-right corner:
 6. GPU-free protocol test: `node eval/run.mjs --mock` (phase 6) or serve
    `eval/mock-host/` on port 4173 — it streams canned Win98 CSS.
 
+### Phase 4 — Claude icon generation
+
+1. Panel → **Set key** (or the Tampermonkey menu command) on a trusted site.
+   Status shows `key set`; the key only lives in Tampermonkey storage.
+2. Redesign a page where the model asks for an icon the library lacks (the
+   **Report** box lists `icon requests:` and `icons: name←source`). Sources:
+   `library`, `library-alias` (fuzzy/synonym match, no API call), `cache`,
+   `claude` (generated now), `fallback-library` / `placeholder` (API failed:
+   the reason is in brackets, e.g. `[no-key]`, `[rate-limited]`, `[unsafe svg]`).
+3. In devtools → Network you will see nothing: the request goes through
+   `GM_xmlhttpRequest`, not the page. The Tampermonkey dashboard → Storage tab
+   for the script shows `icon:<hash>` entries. Menu commands
+   *list generated icons* / *clear generated icons* manage the shared cache.
+4. Visit another site that requests the same icon: it resolves from `cache`
+   without an API call.
+5. Remove the key: requests fall back to the closest library icon or the
+   placeholder; the design still completes.
+
 ## Status
 
 - [x] Phase 1 — repo, build tooling, userscript shell, dev stub, panel skeleton
 - [x] Phase 2 — asset library + manifest, page summarizer, validator
 - [x] Phase 3 — in-browser model: design generation, streaming, per-domain cache
-- [ ] Phase 4 — Claude API icon generation, sanitizer, shared icon cache
+- [x] Phase 4 — Claude API icon generation, sanitizer, shared icon cache
 - [ ] Phase 5 — inspector + self-correction loop
 - [ ] Phase 6 — eval harness
 - [ ] Phase 7 — training pipeline

@@ -20,28 +20,40 @@ var RetroWebLib = (() => {
   // userscript/src/lib.js
   var lib_exports = {};
   __export(lib_exports, {
+    DESIGN_SYSTEM_PROMPT: () => DESIGN_SYSTEM_PROMPT,
+    ICON_SYSTEM_PROMPT: () => ICON_SYSTEM_PROMPT,
     LIBRARY_CSS: () => LIBRARY_CSS,
     MANIFEST: () => MANIFEST,
+    REPAIR_SYSTEM_PROMPT: () => REPAIR_SYSTEM_PROMPT,
     RuleStreamer: () => RuleStreamer,
     STYLES: () => STYLES,
     StyleSlot: () => StyleSlot,
     VERSION: () => VERSION,
     applyClassDirectives: () => applyClassDirectives,
+    buildIconRequest: () => buildIconRequest,
+    createIconCache: () => createIconCache,
+    createIconResolver: () => createIconResolver,
     createMeasure: () => createMeasure,
     createSlots: () => createSlots,
     dataUriToSvg: () => dataUriToSvg,
     describeStyle: () => describeStyle,
+    designMessages: () => designMessages,
     estimateTokens: () => estimateTokens,
     extractDirectives: () => extractDirectives,
+    extractSvgFromResponse: () => extractSvgFromResponse,
+    iconHash: () => iconHash,
     libraryClassNames: () => libraryClassNames,
     libraryIconNames: () => libraryIconNames,
     libraryVarNames: () => libraryVarNames,
     manifestToPrompt: () => manifestToPrompt,
+    matchLibraryIcon: () => matchLibraryIcon,
     parseCss: () => parseCss,
     patternSelector: () => patternSelector,
     pickStyle: () => pickStyle,
     probeSelector: () => probeSelector,
     renderSummary: () => renderSummary,
+    repairMessages: () => repairMessages,
+    sanitizeSvg: () => sanitizeSvg,
     summarizePage: () => summarizePage,
     svgToDataUri: () => svgToDataUri,
     uniqueSelector: () => uniqueSelector,
@@ -51,6 +63,12 @@ var RetroWebLib = (() => {
 
   // userscript/src/config.js
   var VERSION = "0.1.0";
+  var STORAGE_KEYS = {
+    apiKey: "apiKey",
+    settings: "settings",
+    sitePrefix: "site:",
+    iconPrefix: "icon:"
+  };
 
   // training/styles.json
   var styles_default = [
@@ -1803,5 +1821,585 @@ var RetroWebLib = (() => {
       return chunk;
     }
   };
+
+  // userscript/src/icons/sanitize.js
+  var ALLOWED_ELEMENTS = /* @__PURE__ */ new Set(["svg", "g", "path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "defs", "lineargradient", "radialgradient", "stop", "title", "desc", "clippath", "mask", "use", "symbol", "pattern"]);
+  var ALLOWED_ATTRS = /* @__PURE__ */ new Set([
+    "id",
+    "class",
+    "viewbox",
+    "width",
+    "height",
+    "x",
+    "y",
+    "x1",
+    "y1",
+    "x2",
+    "y2",
+    "cx",
+    "cy",
+    "r",
+    "rx",
+    "ry",
+    "d",
+    "points",
+    "fill",
+    "stroke",
+    "stroke-width",
+    "stroke-linecap",
+    "stroke-linejoin",
+    "stroke-dasharray",
+    "stroke-dashoffset",
+    "stroke-miterlimit",
+    "opacity",
+    "fill-opacity",
+    "stroke-opacity",
+    "fill-rule",
+    "clip-rule",
+    "transform",
+    "offset",
+    "stop-color",
+    "stop-opacity",
+    "gradientunits",
+    "gradienttransform",
+    "spreadmethod",
+    "clip-path",
+    "mask",
+    "shape-rendering",
+    "preserveaspectratio",
+    "xmlns",
+    "xmlns:xlink",
+    "href",
+    "xlink:href",
+    "patternunits",
+    "patterntransform",
+    "vector-effect",
+    "paint-order",
+    "display",
+    "visibility",
+    "overflow"
+  ]);
+  var URL_FUNC = /url\(\s*(['"]?)([^'")]*)\1\s*\)/gi;
+  var DANGEROUS = /javascript:|data:|vbscript:|expression\(|<script|&#|%3c/i;
+  function sanitizeSvg(input, { maxLength = 2e4, defaultViewBox = "0 0 16 16" } = {}) {
+    const removed = [];
+    const errors = [];
+    if (typeof input !== "string") return { svg: null, errors: ["not a string"], removed };
+    let text = input.trim();
+    text = text.replace(/```[a-z]*\s*/gi, "").replace(/<\?xml[^>]*\?>/gi, "").replace(/<!DOCTYPE[^>]*>/gi, "").replace(/<!--[\s\S]*?-->/g, "").trim();
+    const start = text.indexOf("<svg");
+    const end = text.lastIndexOf("</svg>");
+    if (start < 0 || end < 0) return { svg: null, errors: ["no <svg> element"], removed };
+    text = text.slice(start, end + 6);
+    if (text.length > maxLength) return { svg: null, errors: ["svg too large"], removed };
+    if (!/xmlns=/.test(text.slice(0, text.indexOf(">")))) text = text.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"');
+    let doc;
+    try {
+      doc = new DOMParser().parseFromString(text, "image/svg+xml");
+    } catch (e) {
+      return { svg: null, errors: ["parse failed: " + (e && e.message)], removed };
+    }
+    if (doc.getElementsByTagName("parsererror").length || !doc.documentElement || doc.documentElement.localName !== "svg") {
+      return { svg: null, errors: ["malformed svg"], removed };
+    }
+    const root = doc.documentElement;
+    const walk = (el) => {
+      for (const child of [...el.childNodes]) {
+        if (child.nodeType === 1) {
+          const name = child.localName.toLowerCase();
+          if (!ALLOWED_ELEMENTS.has(name) || child.namespaceURI && child.namespaceURI !== "http://www.w3.org/2000/svg") {
+            removed.push("element:" + name);
+            child.remove();
+            continue;
+          }
+          walk(child);
+        } else if (child.nodeType === 8 || child.nodeType === 7) {
+          child.remove();
+        } else if (child.nodeType === 3 && !/^(title|desc)$/i.test(el.localName) && child.nodeValue.trim()) {
+          child.remove();
+        }
+      }
+      for (const attr of [...el.attributes]) {
+        const name = attr.name.toLowerCase();
+        const value = attr.value;
+        let ok = ALLOWED_ATTRS.has(name);
+        if (name.startsWith("on")) ok = false;
+        if (ok && (name === "href" || name === "xlink:href") && !/^#[\w:-]+$/.test(value.trim())) ok = false;
+        if (ok && DANGEROUS.test(value)) ok = false;
+        if (ok && /url\(/i.test(value)) {
+          let urlsOk = true;
+          value.replace(URL_FUNC, (_m, _q, u) => {
+            if (!/^#[\w:-]+$/.test(u.trim())) urlsOk = false;
+            return _m;
+          });
+          if (!urlsOk) ok = false;
+        }
+        if (ok && value.length > 4e3) ok = false;
+        if (!ok) {
+          removed.push("attr:" + name);
+          el.removeAttribute(attr.name);
+        }
+      }
+    };
+    walk(root);
+    if (!root.getAttribute("viewBox")) root.setAttribute("viewBox", defaultViewBox);
+    root.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    if (!root.querySelector("path, rect, circle, ellipse, line, polyline, polygon, use")) errors.push("no shapes left");
+    let svg;
+    try {
+      svg = new XMLSerializer().serializeToString(root);
+    } catch (e) {
+      return { svg: null, errors: ["serialize failed"], removed };
+    }
+    if (errors.length) return { svg: null, errors, removed };
+    return { svg, errors, removed };
+  }
+
+  // userscript/src/storage.js
+  var hasGM = typeof GM_getValue === "function" && typeof GM_setValue === "function";
+  var memory = /* @__PURE__ */ new Map();
+  var LS_PREFIX = "__retro_web__:";
+  function ls() {
+    try {
+      return typeof localStorage !== "undefined" ? localStorage : null;
+    } catch {
+      return null;
+    }
+  }
+  function getValue(key, fallback) {
+    if (hasGM) {
+      const v = GM_getValue(key);
+      return v === void 0 || v === null ? fallback : v;
+    }
+    const store = ls();
+    if (store) {
+      try {
+        const raw = store.getItem(LS_PREFIX + key);
+        if (raw != null) return JSON.parse(raw);
+      } catch {
+      }
+    }
+    return memory.has(key) ? memory.get(key) : fallback;
+  }
+  function setValue(key, value) {
+    if (hasGM) {
+      GM_setValue(key, value);
+      return;
+    }
+    memory.set(key, value);
+    const store = ls();
+    if (store) {
+      try {
+        store.setItem(LS_PREFIX + key, JSON.stringify(value));
+      } catch {
+      }
+    }
+  }
+  function deleteValue(key) {
+    if (hasGM) {
+      if (typeof GM_deleteValue === "function") GM_deleteValue(key);
+      else GM_setValue(key, void 0);
+      return;
+    }
+    memory.delete(key);
+    const store = ls();
+    if (store) {
+      try {
+        store.removeItem(LS_PREFIX + key);
+      } catch {
+      }
+    }
+  }
+  function listKeys() {
+    if (hasGM && typeof GM_listValues === "function") return GM_listValues();
+    const keys = new Set(memory.keys());
+    const store = ls();
+    if (store) {
+      try {
+        for (let i = 0; i < store.length; i++) {
+          const k = store.key(i);
+          if (k && k.startsWith(LS_PREFIX)) keys.add(k.slice(LS_PREFIX.length));
+        }
+      } catch {
+      }
+    }
+    return [...keys];
+  }
+  function hasApiKey() {
+    const k = getValue(STORAGE_KEYS.apiKey, "");
+    return typeof k === "string" && k.length > 0;
+  }
+  function readApiKey() {
+    const k = getValue(STORAGE_KEYS.apiKey, "");
+    return typeof k === "string" ? k : "";
+  }
+
+  // userscript/src/icons/claude.js
+  var ICON_SYSTEM_PROMPT = `You draw tiny pixel-art icons for a year-2000 website toolkit. Reply with exactly one <svg> element and nothing else: no prose, no markdown fences, no XML prolog, no comments.
+Requirements:
+- Root: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 SIZE SIZE" shape-rendering="crispEdges"> where SIZE is the requested size (16 or 32).
+- Pixel-art look: axis-aligned <path> or <rect> shapes snapped to the integer grid, a 1px black outline (#000000), flat fills, a highlight pixel or two.
+- Palette only: #000000 #ffffff #c0c0c0 #808080 #ffcc00 #3366cc #cc3333 #339933 #ff6600 #99ccff #ff66aa #ffcc99 #ffe680.
+- No gradients, filters, text, images, scripts, styles, animations or external references. No <text>.
+- Use only path, rect, circle, polygon, g elements. Keep it under 1200 characters.
+- The subject must be recognisable at 16 pixels: bold silhouette, few details.`;
+  function buildIconRequest({ name, description, size = 16, settings }) {
+    const n = String(name || "").replace(/[^a-z0-9-]/gi, "-").slice(0, 40);
+    const d = String(description || "").replace(/\s+/g, " ").slice(0, 160);
+    return {
+      url: settings.anthropicEndpoint,
+      headers: {
+        "anthropic-version": settings.anthropicVersion,
+        "content-type": "application/json"
+      },
+      body: {
+        model: settings.iconModel,
+        max_tokens: settings.iconMaxTokens || 1200,
+        system: ICON_SYSTEM_PROMPT,
+        output_config: { effort: "low" },
+        messages: [{ role: "user", content: `Icon name: ${n}
+Description: ${d || n}
+Size: ${size === 32 ? 32 : 16}` }]
+      }
+    };
+  }
+  function extractSvgFromResponse(json) {
+    if (!json || !Array.isArray(json.content)) return { svg: null, error: "bad response" };
+    if (json.stop_reason === "refusal") return { svg: null, error: "refusal" };
+    const text = json.content.filter((b) => b && b.type === "text").map((b) => b.text).join("\n");
+    const start = text.indexOf("<svg");
+    const end = text.lastIndexOf("</svg>");
+    if (start < 0 || end < 0) return { svg: null, error: json.stop_reason === "max_tokens" ? "truncated" : "no svg in reply" };
+    return { svg: text.slice(start, end + 6), error: null };
+  }
+  function requestIconSvg({ name, description, size = 16, settings, signal, timeoutMs }) {
+    return new Promise((resolve) => {
+      if (typeof GM_xmlhttpRequest !== "function") return resolve({ svg: null, error: "no GM_xmlhttpRequest" });
+      if (!hasApiKey()) return resolve({ svg: null, error: "no-key" });
+      const req = buildIconRequest({ name, description, size, settings });
+      let done = false;
+      const finish = (r) => {
+        if (!done) {
+          done = true;
+          resolve(r);
+        }
+      };
+      let handle = null;
+      try {
+        handle = GM_xmlhttpRequest({
+          method: "POST",
+          url: req.url,
+          headers: { ...req.headers, "x-api-key": readApiKey() },
+          data: JSON.stringify(req.body),
+          timeout: timeoutMs || settings.iconTimeoutMs || 25e3,
+          anonymous: true,
+          onload: (res) => {
+            let json = null;
+            try {
+              json = JSON.parse(res.responseText);
+            } catch {
+              return finish({ svg: null, error: "invalid json (" + res.status + ")" });
+            }
+            if (res.status < 200 || res.status >= 300) {
+              const msg = json && json.error && json.error.message || "http " + res.status;
+              return finish({ svg: null, error: res.status === 401 ? "invalid-key" : res.status === 429 ? "rate-limited" : msg, status: res.status });
+            }
+            finish(extractSvgFromResponse(json));
+          },
+          onerror: (e) => finish({ svg: null, error: "network error" + (e && e.error ? ": " + e.error : "") }),
+          ontimeout: () => finish({ svg: null, error: "timeout" })
+        });
+      } catch (e) {
+        return finish({ svg: null, error: "request failed: " + (e && e.message) });
+      }
+      if (signal) {
+        signal.addEventListener(
+          "abort",
+          () => {
+            try {
+              handle && handle.abort && handle.abort();
+            } catch {
+            }
+            finish({ svg: null, error: "aborted" });
+          },
+          { once: true }
+        );
+      }
+    });
+  }
+
+  // userscript/src/icons/cache.js
+  function iconHash(name, description) {
+    const s = `${String(name).toLowerCase().trim()}|${String(description || "").toLowerCase().replace(/\s+/g, " ").trim()}`;
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619) >>> 0;
+    }
+    return h.toString(16).padStart(8, "0");
+  }
+  function createIconCache(storage = { getValue, setValue, deleteValue, listKeys }) {
+    const prefix = STORAGE_KEYS.iconPrefix;
+    return {
+      key: (name, description) => prefix + iconHash(name, description),
+      get(name, description) {
+        const v = storage.getValue(prefix + iconHash(name, description), null);
+        return v && v.uri ? v : null;
+      },
+      // Looser lookup by name only (any description) for reuse across sites.
+      findByName(name) {
+        const n = String(name).toLowerCase();
+        for (const k of storage.listKeys()) {
+          if (!k.startsWith(prefix)) continue;
+          const v = storage.getValue(k, null);
+          if (v && v.name === n && v.uri) return v;
+        }
+        return null;
+      },
+      put(name, description, entry) {
+        const rec = { name: String(name).toLowerCase(), description: String(description || ""), createdAt: Date.now(), ...entry };
+        storage.setValue(prefix + iconHash(name, description), rec);
+        return rec;
+      },
+      list() {
+        return storage.listKeys().filter((k) => k.startsWith(prefix)).map((k) => storage.getValue(k, null)).filter(Boolean);
+      },
+      clear() {
+        for (const k of storage.listKeys()) if (k.startsWith(prefix)) storage.deleteValue(k);
+      }
+    };
+  }
+
+  // userscript/src/icons/index.js
+  var STOP = /* @__PURE__ */ new Set(["a", "an", "the", "of", "with", "icon", "small", "for", "and", "in", "on", "to", "pixel", "style", "simple", "symbol", "sign", "button", "image"]);
+  var SYNONYMS = {
+    house: "home",
+    homepage: "home",
+    email: "mail",
+    envelope: "mail",
+    letter: "mail",
+    inbox: "mail",
+    magnifier: "search",
+    magnifying: "search",
+    find: "search",
+    lookup: "search",
+    basket: "cart",
+    shopping: "cart",
+    bag: "cart",
+    checkout: "cart",
+    buy: "cart",
+    person: "user",
+    avatar: "user",
+    profile: "user",
+    account: "user",
+    login: "user",
+    member: "user",
+    directory: "folder",
+    document: "file",
+    page: "file",
+    doc: "file",
+    paper: "file",
+    article: "file",
+    favorite: "star",
+    favourite: "star",
+    rating: "star",
+    like: "heart",
+    love: "heart",
+    settings: "gear",
+    cog: "gear",
+    config: "gear",
+    preferences: "gear",
+    tool: "gear",
+    tools: "gear",
+    note: "music",
+    song: "music",
+    audio: "music",
+    photo: "image",
+    picture: "image",
+    gallery: "image",
+    camera: "image",
+    chain: "link",
+    url: "link",
+    save: "download",
+    export: "download",
+    feed: "rss",
+    comment: "chat",
+    comments: "chat",
+    bubble: "chat",
+    message: "chat",
+    talk: "chat",
+    forum: "chat",
+    secure: "lock",
+    password: "lock",
+    private: "lock",
+    world: "globe",
+    web: "globe",
+    earth: "globe",
+    international: "globe",
+    language: "globe",
+    fire: "hot",
+    flame: "hot",
+    trending: "hot",
+    tick: "check",
+    done: "check",
+    ok: "check",
+    success: "check",
+    remove: "close",
+    delete: "close",
+    x: "close",
+    cancel: "close",
+    hamburger: "menu",
+    bars: "menu",
+    navigation: "menu",
+    date: "calendar",
+    event: "calendar",
+    schedule: "calendar",
+    time: "clock",
+    history: "clock",
+    recent: "clock",
+    printer: "print",
+    label: "tag",
+    price: "tag",
+    sale: "tag",
+    ribbon: "bookmark",
+    saved: "bookmark",
+    video: "play",
+    watch: "play",
+    next: "arrow-right",
+    previous: "arrow-left",
+    back: "arrow-left",
+    forward: "arrow-right",
+    up: "arrow-up",
+    down: "arrow-down",
+    top: "arrow-up",
+    alert: "warning",
+    error: "warning",
+    danger: "warning",
+    help: "info",
+    question: "info",
+    about: "info",
+    new: "new",
+    fresh: "new"
+  };
+  function tokens(text) {
+    return String(text || "").toLowerCase().split(/[^a-z0-9]+/).filter((t) => t && !STOP.has(t)).map((t) => SYNONYMS[t] || t);
+  }
+  function matchLibraryIcon(request, library = MANIFEST.icons) {
+    const reqName = tokens(request.name);
+    const reqAll = /* @__PURE__ */ new Set([...reqName, ...tokens(request.description)]);
+    let best = null;
+    for (const icon of library) {
+      if (icon.name === "placeholder") continue;
+      const iconTokens = /* @__PURE__ */ new Set([...tokens(icon.name), ...tokens(icon.description)]);
+      let score = 0;
+      if (icon.name === request.name) score += 2;
+      if (reqName.includes(icon.name) || reqName.join("-") === icon.name) score += 1;
+      for (const t of reqAll) if (iconTokens.has(t)) score += t === icon.name ? 0.6 : 0.3;
+      if (!best || score > best.score) best = { icon, score };
+    }
+    return best && best.score > 0 ? best : null;
+  }
+  function createIconResolver({ settings, fetchSvg = requestIconSvg, cache = createIconCache(), library = MANIFEST.icons, hasKey = hasApiKey } = {}) {
+    const inflight = /* @__PURE__ */ new Map();
+    async function resolveOne(req, ctx) {
+      const name = req.name;
+      const varName = "--icon-" + name;
+      const libNames = new Set(library.map((i) => i.name));
+      if (libNames.has(name)) return { name, varName, source: "library", value: null };
+      const fuzzy = matchLibraryIcon(req, library);
+      if (fuzzy && fuzzy.score >= 1) return { name, varName, source: "library-alias", alias: fuzzy.icon.name, value: `var(--icon-${fuzzy.icon.name})` };
+      const cached = cache.get(name, req.description) || cache.findByName(name);
+      if (cached) return { name, varName, source: "cache", value: `url("${cached.uri}")` };
+      if (hasKey()) {
+        const key = name + "|" + req.description;
+        if (!inflight.has(key)) {
+          inflight.set(
+            key,
+            fetchSvg({ name, description: req.description, size: 16, settings, signal: ctx.signal }).finally(() => inflight.delete(key))
+          );
+        }
+        const r = await inflight.get(key);
+        if (r && r.svg) {
+          const s = sanitizeSvg(r.svg);
+          if (s.svg) {
+            const uri = svgToDataUri(s.svg);
+            if (uri) {
+              cache.put(name, req.description, { svg: s.svg, uri, model: settings.iconModel });
+              return { name, varName, source: "claude", value: `url("${uri}")`, removed: s.removed };
+            }
+          }
+          return fallback(req, fuzzy, "unsafe svg: " + (s.errors.join("; ") || "rejected"));
+        }
+        return fallback(req, fuzzy, r && r.error || "no reply");
+      }
+      return fallback(req, fuzzy, "no-key");
+    }
+    function fallback(req, fuzzy, reason) {
+      const name = req.name;
+      const varName = "--icon-" + name;
+      if (fuzzy && fuzzy.score >= 0.3) return { name, varName, source: "fallback-library", alias: fuzzy.icon.name, value: `var(--icon-${fuzzy.icon.name})`, reason };
+      return { name, varName, source: "placeholder", value: "var(--icon-placeholder)", reason };
+    }
+    async function resolveIcons(requests, ctx = {}) {
+      const list = (requests || []).filter((r) => r && r.name);
+      const limit = Math.max(1, settings.iconConcurrency || 3);
+      const results = new Array(list.length);
+      let next = 0;
+      const worker = async () => {
+        while (next < list.length) {
+          const i = next++;
+          try {
+            results[i] = await resolveOne(list[i], ctx);
+          } catch (e) {
+            results[i] = fallback(list[i], matchLibraryIcon(list[i], library), "error: " + (e && e.message));
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(limit, list.length) }, worker));
+      const lines = results.filter((r) => r.value).map((r) => `${r.varName}: ${r.value};`);
+      return {
+        css: lines.length ? `:root { ${lines.join(" ")} }` : "",
+        resolved: results.filter((r) => !r.reason),
+        failed: results.filter((r) => r.reason),
+        results
+      };
+    }
+    return { resolveIcons, resolveOne, cache };
+  }
+
+  // userscript/src/model/prompts.js
+  var DESIGN_SYSTEM_PROMPT = `You are a web designer from the year 2000. You restyle an existing web page by writing CSS only.
+Rules:
+- Output ONLY CSS. No explanations, no markdown, no HTML.
+- Use the selectors given in the PAGE summary (landmark selectors, classes, ids, tags). One rule per line: selector { property: value; property: value; }
+- Never nest rules. No @import. No external url(). Only library assets via var(--icon-NAME), var(--bg-NAME), var(--grad-NAME), var(--font-NAME), var(--cursor-NAME) plus plain colors.
+- Keep text readable: body text 12px or larger, strong contrast between text and background. Never hide content.
+- Restyle everything visible: body background, fonts, headings, links, nav, header, main content, sidebar, footer, buttons, inputs, images, tables, forms.
+- Icons: decorate nav links and buttons with 16px icons: background-image: var(--icon-NAME); background-repeat: no-repeat; background-position: 4px center; padding-left: 24px;
+- If the library lacks an icon you need, add a line: /* icon-request: name | short description */ and then use var(--icon-name).
+- To attach a library component class write a line: /* apply-class: selector | class-name */
+- Commit fully to the given STYLE. Write 25 to 50 rules and finish with a complete rule.`;
+  var REPAIR_SYSTEM_PROMPT = `You are a careful CSS engineer fixing layout problems in a 2000s-style redesign.
+You receive the CSS you wrote and an inspector REPORT of measured problems. Reply with a CSS PATCH only: rules to add or override that fix the listed issues.
+Rules:
+- Output ONLY CSS. No explanations, no markdown.
+- Keep the visual style; change only what the issues need. Use the exact selectors from the report.
+- Typical fixes: off-center icons -> display:inline-flex; align-items:center; gap:6px on the container; overflow -> max-width:100%; overflow-wrap:anywhere; low contrast -> change color or background; small text -> font-size:12px or larger; invisible elements -> display:block (or inline-block); visibility:visible; opacity:1; inconsistent spacing -> same margin for all siblings; touching the viewport edge -> add padding.
+- Never use display:none. Never use external url(). No @import.
+- At most 20 rules.`;
+  function designMessages({ summaryText, manifestText, style }) {
+    const user = [`STYLE: ${describeStyle(style)}`, "", manifestText, "", "PAGE SUMMARY:", summaryText, "", "Write the CSS now."].join("\n");
+    return [
+      { role: "system", content: DESIGN_SYSTEM_PROMPT },
+      { role: "user", content: user }
+    ];
+  }
+  function repairMessages({ css, reportText, style }) {
+    const user = [`STYLE: ${style ? style.name : "retro"}`, "", "CURRENT CSS:", css, "", "REPORT:", reportText, "", "Write the CSS patch now."].join("\n");
+    return [
+      { role: "system", content: REPAIR_SYSTEM_PROMPT },
+      { role: "user", content: user }
+    ];
+  }
   return __toCommonJS(lib_exports);
 })();

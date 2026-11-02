@@ -10,6 +10,7 @@ import { STYLES } from './model/styles.js';
 import { LIBRARY_CSS } from './assets/index.js';
 import { summarizePage } from './summarize.js';
 import { createPipeline, formatReport } from './pipeline.js';
+import { createIconResolver } from './icons/index.js';
 
 function setState(state, detail = {}) {
   try {
@@ -32,7 +33,10 @@ function main() {
   slots.panel.set(PANEL_HOST_CSS);
   slots.library.set(LIBRARY_CSS);
 
-  const hooks = {};
+  const iconResolver = createIconResolver({ settings });
+  const hooks = {
+    resolveIcons: (requests, ctx) => createIconResolver({ settings: ctx.settings || settings }).resolveIcons(requests, ctx),
+  };
   let pipeline = null;
   let panel = null;
 
@@ -116,6 +120,16 @@ function main() {
     panel.showReport();
   });
   storage.registerMenuCommand('retro-web: redesign this page', () => pipeline.runDesign({}));
+  storage.registerMenuCommand('retro-web: list generated icons', () => {
+    const list = iconResolver.cache.list();
+    console.log(`[retro-web] ${list.length} generated icon(s) in the shared cache`, list.map((i) => i.name));
+    panel.setReport(list.length ? list.map((i) => `${i.name} — ${i.description} (${new Date(i.createdAt).toLocaleDateString()})`).join('\n') : '(no generated icons yet)');
+    panel.showReport();
+  });
+  storage.registerMenuCommand('retro-web: clear generated icons', () => {
+    iconResolver.cache.clear();
+    panel.setStatus('generated icon cache cleared');
+  });
   storage.registerMenuCommand('retro-web: toggle on this site', () => {
     const rec = storage.getSiteRecord(hostname) || {};
     const enabled = rec.enabled === false;

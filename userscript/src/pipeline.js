@@ -176,6 +176,7 @@ export function createPipeline({ doc, hostname, slots, panel, setState, getSetti
         iconCss: slots.icons.css,
         applyClass: appliedClasses.map((a) => ({ selector: a.selector, className: a.className })),
         iconRequests,
+        iconResults: (iconReport.results || []).map((r) => ({ name: r.name, source: r.source, alias: r.alias, reason: r.reason })),
         style: style.id,
         report,
         stats: {
@@ -232,6 +233,7 @@ export function formatReport(record) {
   const L = [];
   L.push(`style: ${record.style} · rules: ${record.stats ? record.stats.kept : '?'} · dropped: ${record.stats ? record.stats.dropped : '?'} · ${record.stats ? Math.round(record.stats.ms / 1000) + 's' : ''}`);
   if (record.iconRequests && record.iconRequests.length) L.push(`icon requests: ${record.iconRequests.map((r) => r.name).join(', ')}`);
+  if (record.iconResults && record.iconResults.length) L.push(`icons: ${record.iconResults.map((r) => `${r.name}←${r.source}${r.alias ? '(' + r.alias + ')' : ''}${r.reason ? ' [' + r.reason + ']' : ''}`).join(', ')}`);
   if (record.applyClass && record.applyClass.length) L.push(`classes: ${record.applyClass.map((a) => `${a.selector}→.${a.className}`).join(', ')}`);
   if (record.report && record.report.text) L.push('', 'ISSUES:', record.report.text);
   else L.push('', 'ISSUES: (none recorded)');
