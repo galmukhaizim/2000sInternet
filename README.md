@@ -202,6 +202,23 @@ GPU (software WebGPU is far too slow for a 1.5B model). Set `ANTHROPIC_API_KEY`
 in the environment to enable icon generation during eval: Node performs the
 request and injects the key, the page only ever sees a sentinel.
 
+### Phase 7 — training pipeline
+
+See [`training/README.md`](training/README.md). Quick check that the plumbing
+works without an API key or GPU:
+
+```bash
+npm run build
+node userscript/scripts/prompts-cli.mjs | head -c 400
+node userscript/scripts/validate-cli.mjs --html eval/fixtures/blog.html --css eval/out/mock/blog/design.css
+node userscript/scripts/inspect-cli.mjs --html eval/fixtures/blog.html --css eval/out/mock/blog/design.css --block-images
+python training/make_dataset.py --dry-run     # needs summaries from scrape_pages.py
+```
+
+The fine-tuned model is used by setting *HF model* in the panel's Advanced
+section (a Hugging Face repo with MLC weights); the host loads it with the
+prebuilt Qwen2 1.5B WebGPU library unless *Model lib* points to your own wasm.
+
 ## Status
 
 - [x] Phase 1 — repo, build tooling, userscript shell, dev stub, panel skeleton
@@ -210,4 +227,4 @@ request and injects the key, the page only ever sees a sentinel.
 - [x] Phase 4 — Claude API icon generation, sanitizer, shared icon cache
 - [x] Phase 5 — inspector + self-correction loop
 - [x] Phase 6 — eval harness
-- [ ] Phase 7 — training pipeline
+- [x] Phase 7 — training pipeline

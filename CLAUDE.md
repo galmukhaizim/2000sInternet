@@ -52,10 +52,10 @@ userscript/
     serve.mjs                 tiny static server for local dev (http://localhost:4173)
   src/pipeline.js             orchestration: cache → summarize → model → validate → apply → icons → repair
 eval/mock-host/               GPU-free fake host speaking the same protocol (streams canned CSS)
-  scripts/                    node CLIs shared with training/eval (validate-cli, inspect-cli)
+  scripts/                    node CLIs shared with training/eval (prompts-cli, validate-cli, inspect-cli, lib-loader)
   test/                       vitest unit tests (validator, sanitizer, inspector, summarizer)
 eval/                         Playwright harness: before/after screenshots + issue report
-training/                     Python pipeline (scrape, teacher dataset, repair dataset, LoRA, convert)
+training/                     Python pipeline (scrape, teacher dataset, repair dataset, LoRA, convert); data/ and checkpoints/ are git-ignored
 ```
 
 ## Architecture decisions (keep consistent)
@@ -101,7 +101,12 @@ training/                     Python pipeline (scrape, teacher dataset, repair d
    (plus an injectable `measure` adapter for the inspector) so they run unchanged
    in the userscript, in vitest/jsdom, and inside Playwright for eval/training.
 10. **Shared sub-style list** lives in `training/styles.json`; the userscript
-    imports it at build time. Do not duplicate it.
+    imports it at build time. Do not duplicate it. Likewise the Python pipeline
+    reads prompts/manifest from the built library via `prompts-cli.mjs` — never
+    copy prompt text into Python.
+11. **Custom models**: `settings.customModelUrl` (+ optional `customModelLib`)
+    in the panel's Advanced section points the host at a Hugging Face MLC repo;
+    `pipeline.resolveModel()` turns it into the WebLLM model record.
 
 ## Security rules (non-negotiable)
 

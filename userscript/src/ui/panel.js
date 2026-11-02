@@ -113,6 +113,8 @@ export function createPanel({ doc = document, styles = [], settings, site, hasKe
   const autoInput = el('input', { type: 'checkbox' });
   autoInput.checked = !!settings.autoDesign;
   const iconModelInput = el('input', { type: 'text', value: settings.iconModel });
+  const customUrlInput = el('input', { type: 'text', value: settings.customModelUrl || '', placeholder: 'https://huggingface.co/<user>/<repo> (optional)' });
+  const customLibInput = el('input', { type: 'text', value: settings.customModelLib || '', placeholder: 'model_lib .wasm URL (optional)' });
   const saveBtn = el('button', {
     class: 'b',
     text: 'Save settings',
@@ -123,6 +125,8 @@ export function createPanel({ doc = document, styles = [], settings, site, hasKe
         maxRepairRounds: Math.max(0, Math.min(6, parseInt(roundsInput.value, 10) || 0)),
         autoDesign: autoInput.checked,
         iconModel: iconModelInput.value.trim(),
+        customModelUrl: customUrlInput.value.trim(),
+        customModelLib: customLibInput.value.trim(),
       }),
   });
 
@@ -161,6 +165,10 @@ export function createPanel({ doc = document, styles = [], settings, site, hasKe
           hostInput,
           el('span', { text: 'Icon model' }),
           iconModelInput,
+          el('span', { text: 'HF model' }),
+          customUrlInput,
+          el('span', { text: 'Model lib' }),
+          customLibInput,
           el('span', { text: 'Repair rounds' }),
           roundsInput,
           el('span', { text: 'Auto design' }),
@@ -236,6 +244,13 @@ export function createPanel({ doc = document, styles = [], settings, site, hasKe
     setBusy(b) {
       redesign.disabled = b;
       randomBtn.disabled = b;
+    },
+    // Opens the key field inside the closed shadow root (never window.prompt,
+    // which a hostile page could override).
+    promptKey() {
+      setMinimized(false);
+      keyInput.classList.remove('hidden');
+      keyInput.focus();
     },
     minimize: () => setMinimized(true),
     destroy: () => host.remove(),

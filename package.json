@@ -13,7 +13,8 @@
     "eval": "node eval/run.mjs",
     "inspect-cli": "node userscript/scripts/inspect-cli.mjs",
     "validate-cli": "node userscript/scripts/validate-cli.mjs",
-    "eval:mock": "node eval/run.mjs --fixtures --mock --label mock"
+    "eval:mock": "node eval/run.mjs --fixtures --mock --label mock",
+    "prompts-cli": "node userscript/scripts/prompts-cli.mjs"
   },
   "devDependencies": {
     "@mlc-ai/web-llm": "0.2.87",

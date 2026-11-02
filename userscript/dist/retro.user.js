@@ -38,6 +38,10 @@
     // { model: 'https://huggingface.co/<user>/<repo>', model_id: 'retro-designer-1.5B-q4f16_1-MLC',
     //   model_lib: 'https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/web-llm-models/v0_2_87/Qwen2.5-1.5B-Instruct-q4f16_1-ctx4k_cs1k-webgpu.wasm' }
     customModel: null,
+    // Panel-friendly form of the above: a Hugging Face repo URL holding MLC weights
+    // (+ optional model_lib wasm URL). When set, it overrides modelId.
+    customModelUrl: "",
+    customModelLib: "",
     contextWindow: 8192,
     temperature: 0.7,
     topP: 0.9,
@@ -509,6 +513,8 @@
     const autoInput = el("input", { type: "checkbox" });
     autoInput.checked = !!settings.autoDesign;
     const iconModelInput = el("input", { type: "text", value: settings.iconModel });
+    const customUrlInput = el("input", { type: "text", value: settings.customModelUrl || "", placeholder: "https://huggingface.co/<user>/<repo> (optional)" });
+    const customLibInput = el("input", { type: "text", value: settings.customModelLib || "", placeholder: "model_lib .wasm URL (optional)" });
     const saveBtn = el("button", {
       class: "b",
       text: "Save settings",
@@ -517,7 +523,9 @@
         hostUrl: hostInput.value.trim(),
         maxRepairRounds: Math.max(0, Math.min(6, parseInt(roundsInput.value, 10) || 0)),
         autoDesign: autoInput.checked,
-        iconModel: iconModelInput.value.trim()
+        iconModel: iconModelInput.value.trim(),
+        customModelUrl: customUrlInput.value.trim(),
+        customModelLib: customLibInput.value.trim()
       })
     });
     const win = el(
@@ -555,6 +563,10 @@
             hostInput,
             el("span", { text: "Icon model" }),
             iconModelInput,
+            el("span", { text: "HF model" }),
+            customUrlInput,
+            el("span", { text: "Model lib" }),
+            customLibInput,
             el("span", { text: "Repair rounds" }),
             roundsInput,
             el("span", { text: "Auto design" }),
@@ -623,6 +635,13 @@
       setBusy(b) {
         redesign.disabled = b;
         randomBtn.disabled = b;
+      },
+      // Opens the key field inside the closed shadow root (never window.prompt,
+      // which a hostile page could override).
+      promptKey() {
+        setMinimized(false);
+        keyInput.classList.remove("hidden");
+        keyInput.focus();
       },
       minimize: () => setMinimized(true),
       destroy: () => host.remove()
@@ -3079,16 +3098,25 @@ Rules:
     function status(text, kind) {
       panel && panel.setStatus(text, kind);
     }
+    function resolveModel(settings) {
+      let customModel = settings.customModel || null;
+      if (!customModel && settings.customModelUrl) {
+        const url = settings.customModelUrl.replace(/\/+$/, "");
+        customModel = { model: url, model_id: url.split("/").pop(), model_lib: settings.customModelLib || void 0 };
+      }
+      return { customModel, modelId: customModel ? customModel.model_id : settings.modelId };
+    }
     function getClient(settings) {
-      const key = [settings.hostUrl, settings.modelId, JSON.stringify(settings.customModel || null), settings.contextWindow].join("|");
+      const { customModel, modelId } = resolveModel(settings);
+      const key = [settings.hostUrl, modelId, JSON.stringify(customModel), settings.contextWindow].join("|");
       if (client && clientKey === key) return client;
       if (client) client.dispose();
       clientKey = key;
       client = new ModelClient({
         doc,
         hostUrl: settings.hostUrl,
-        modelId: settings.modelId,
-        customModel: settings.customModel,
+        modelId,
+        customModel,
         contextWindow: settings.contextWindow,
         onProgress: ({ text, progress }) => {
           setState2("loading-model", { text, progress });
@@ -3855,12 +3883,8 @@ Size: ${size === 32 ? 32 : 16}` }]
     });
     pipeline = createPipeline({ doc: document, hostname, slots, panel, setState, getSettings: () => settings = getSettings(), hooks });
     registerMenuCommand("retro-web: set Claude API key", () => {
-      const k = prompt("Paste your Claude API key (stored only in Tampermonkey storage):");
-      if (k && k.trim()) {
-        setApiKey(k.trim());
-        panel.setKeyState(true);
-        panel.setStatus("API key saved", "ok");
-      }
+      panel.setStatus("paste the key below and press Enter (stored in Tampermonkey only)");
+      panel.promptKey();
     });
     registerMenuCommand("retro-web: clear Claude API key", () => {
       clearApiKey();

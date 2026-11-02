@@ -23,16 +23,26 @@ export function createPipeline({ doc, hostname, slots, panel, setState, getSetti
     panel && panel.setStatus(text, kind);
   }
 
+  function resolveModel(settings) {
+    let customModel = settings.customModel || null;
+    if (!customModel && settings.customModelUrl) {
+      const url = settings.customModelUrl.replace(/\/+$/, '');
+      customModel = { model: url, model_id: url.split('/').pop(), model_lib: settings.customModelLib || undefined };
+    }
+    return { customModel, modelId: customModel ? customModel.model_id : settings.modelId };
+  }
+
   function getClient(settings) {
-    const key = [settings.hostUrl, settings.modelId, JSON.stringify(settings.customModel || null), settings.contextWindow].join('|');
+    const { customModel, modelId } = resolveModel(settings);
+    const key = [settings.hostUrl, modelId, JSON.stringify(customModel), settings.contextWindow].join('|');
     if (client && clientKey === key) return client;
     if (client) client.dispose();
     clientKey = key;
     client = new ModelClient({
       doc,
       hostUrl: settings.hostUrl,
-      modelId: settings.modelId,
-      customModel: settings.customModel,
+      modelId,
+      customModel,
       contextWindow: settings.contextWindow,
       onProgress: ({ text, progress }) => {
         setState('loading-model', { text, progress });

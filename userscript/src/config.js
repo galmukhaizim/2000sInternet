@@ -15,6 +15,10 @@ export const DEFAULTS = {
   // { model: 'https://huggingface.co/<user>/<repo>', model_id: 'retro-designer-1.5B-q4f16_1-MLC',
   //   model_lib: 'https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/web-llm-models/v0_2_87/Qwen2.5-1.5B-Instruct-q4f16_1-ctx4k_cs1k-webgpu.wasm' }
   customModel: null,
+  // Panel-friendly form of the above: a Hugging Face repo URL holding MLC weights
+  // (+ optional model_lib wasm URL). When set, it overrides modelId.
+  customModelUrl: '',
+  customModelLib: '',
   contextWindow: 8192,
   temperature: 0.7,
   topP: 0.9,

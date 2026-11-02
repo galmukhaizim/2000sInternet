@@ -1,0 +1,21 @@
+# One URL per line. Aim for diversity: blogs, shops, docs, portals, forums, dashboards, landing pages.
+https://example.com/
+https://en.wikipedia.org/wiki/GeoCities
+https://news.ycombinator.com/
+https://developer.mozilla.org/en-US/docs/Web/CSS
+https://www.w3.org/
+https://lite.cnn.com/
+https://text.npr.org/
+https://old.reddit.com/r/web_design/
+https://www.gnu.org/
+https://lobste.rs/
+https://www.bbc.com/news
+https://docs.python.org/3/
+https://github.com/mlc-ai/web-llm
+https://www.npmjs.com/package/esbuild
+https://stackoverflow.com/questions
+https://www.theguardian.com/international
+https://archive.org/
+https://www.craigslist.org/about/sites
+https://nodejs.org/en
+https://www.rust-lang.org/

@@ -101,12 +101,8 @@ function main() {
   pipeline = createPipeline({ doc: document, hostname, slots, panel, setState, getSettings: () => (settings = storage.getSettings()), hooks });
 
   storage.registerMenuCommand('retro-web: set Claude API key', () => {
-    const k = prompt('Paste your Claude API key (stored only in Tampermonkey storage):');
-    if (k && k.trim()) {
-      storage.setApiKey(k.trim());
-      panel.setKeyState(true);
-      panel.setStatus('API key saved', 'ok');
-    }
+    panel.setStatus('paste the key below and press Enter (stored in Tampermonkey only)');
+    panel.promptKey();
   });
   storage.registerMenuCommand('retro-web: clear Claude API key', () => {
     storage.clearApiKey();

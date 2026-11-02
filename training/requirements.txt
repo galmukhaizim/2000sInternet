@@ -1,0 +1,13 @@
+# Data generation
+anthropic>=1.0
+playwright>=1.50
+# Fine-tuning (GPU machine)
+torch>=2.3
+transformers>=4.45
+datasets>=2.20
+peft>=0.12
+trl>=0.19
+accelerate>=0.33
+# Optional, faster LoRA on consumer GPUs:  pip install unsloth
+# Conversion to WebLLM/MLC format:        pip install --pre -U -f https://mlc.ai/wheels mlc-llm-nightly-cpu mlc-ai-nightly-cpu
+# Upload:                                 pip install huggingface_hub
