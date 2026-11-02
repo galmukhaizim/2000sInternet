@@ -45,3 +45,6 @@ venv/
 
 # generated dev stub with machine-specific file:// path
 userscript/dist/retro.dev.user.js
+
+# large WebLLM host bundle (rebuild with `npm run build`)
+userscript/dist/host/host.js

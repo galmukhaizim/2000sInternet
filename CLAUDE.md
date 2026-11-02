@@ -50,6 +50,8 @@ userscript/
   host/
     index.html, host.js       the model host page (bundles WebLLM), served on a fixed origin
     serve.mjs                 tiny static server for local dev (http://localhost:4173)
+  src/pipeline.js             orchestration: cache → summarize → model → validate → apply → icons → repair
+eval/mock-host/               GPU-free fake host speaking the same protocol (streams canned CSS)
   scripts/                    node CLIs shared with training/eval (validate-cli, inspect-cli)
   test/                       vitest unit tests (validator, sanitizer, inspector, summarizer)
 eval/                         Playwright harness: before/after screenshots + issue report
@@ -129,8 +131,10 @@ training/                     Python pipeline (scrape, teacher dataset, repair d
   "Allow access to file URLs" for this.
 - No external runtime dependencies in the userscript bundle (web-llm is bundled
   only into the host page). Keep `dist/retro.user.js` dependency-free.
-- `dist/` is committed so the file:// dev stub and the eval harness work from a
-  fresh clone. Rebuild (`npm run build`) before committing changes to `src/`.
+- `dist/retro.user.js` and `dist/retro.lib.js` are committed so the file:// dev
+  stub and the harnesses work from a fresh clone. `dist/host/host.js` (~6 MB,
+  bundles WebLLM) is git-ignored: `npm run build` before `npm run host`.
+  Rebuild (`npm run build`) before committing changes to `src/`.
 - Page state for harnesses: `document.documentElement.dataset.retroWebState`
   (`idle | loading-model | designing | repairing | done | error | disabled`) and a
   `retro-web:status` CustomEvent on `document`. No globals on `window`.

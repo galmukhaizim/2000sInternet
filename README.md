@@ -125,11 +125,34 @@ A small Win98-style window in the bottom-right corner:
 4. `userscript/dist/retro.lib.js` exposes `RetroWebLib.summarizePage`,
    `RetroWebLib.validateCss` and friends for harnesses.
 
+### Phase 3 — in-browser designer model
+
+1. `npm run build` (also builds `userscript/dist/host/host.js`, ~6 MB, not
+   committed) and `npm run host`. Open http://localhost:4173/ once: it should
+   say *open as a standalone page*.
+2. Visit a site with the dev stub installed. The panel shows
+   `summarizing page…`, then `downloading model 1/N (first time only)` with a
+   progress bar — the default `Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC` is about
+   1 GB and is cached by the host origin, so later sites load it from cache in a
+   few seconds — then `designing (Style name)… N rules` while rules stream in and
+   are applied live, then `done`.
+3. Reload: the design is applied instantly from the per-domain cache (status
+   `cached design (style)`), no model frame is created.
+4. Panel: pick a style and press **Redesign** (a new take with the same model),
+   or 🎲 for a random style. **Original** removes the design for this view;
+   **Clear site** forgets the cache; **Report** shows rule counts, dropped rules
+   and directives for the last run.
+5. If Chrome prompts for *local network access* when a public site embeds the
+   localhost host frame, allow it. Sites with a strict `frame-src` CSP show
+   `blocked by this site's CSP` and keep their cached design if any.
+6. GPU-free protocol test: `node eval/run.mjs --mock` (phase 6) or serve
+   `eval/mock-host/` on port 4173 — it streams canned Win98 CSS.
+
 ## Status
 
 - [x] Phase 1 — repo, build tooling, userscript shell, dev stub, panel skeleton
 - [x] Phase 2 — asset library + manifest, page summarizer, validator
-- [ ] Phase 3 — in-browser model: design generation, streaming, per-domain cache
+- [x] Phase 3 — in-browser model: design generation, streaming, per-domain cache
 - [ ] Phase 4 — Claude API icon generation, sanitizer, shared icon cache
 - [ ] Phase 5 — inspector + self-correction loop
 - [ ] Phase 6 — eval harness

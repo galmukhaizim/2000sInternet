@@ -1,6 +1,6 @@
-// retro-web userscript entry. Phase 1: shell + panel + storage + menu commands.
-// The design pipeline (summarize → model → validate → apply → repair) is wired
-// in later phases; see CLAUDE.md for the architecture.
+// retro-web userscript entry: mounts the panel, applies cached designs, and
+// runs the design pipeline (summarize → model → validate → apply → icons →
+// repair → cache). See CLAUDE.md for the architecture.
 import { VERSION, PANEL_ID } from './config.js';
 import * as storage from './storage.js';
 import { createSlots } from './apply.js';
@@ -9,6 +9,7 @@ import { createCspMonitor, describeEnvironment } from './csp.js';
 import { STYLES } from './model/styles.js';
 import { LIBRARY_CSS } from './assets/index.js';
 import { summarizePage } from './summarize.js';
+import { createPipeline, formatReport } from './pipeline.js';
 
 function setState(state, detail = {}) {
   try {
@@ -23,7 +24,7 @@ function main() {
   if (window.top !== window) return; // never inside frames (incl. our own host)
   if (document.getElementById(PANEL_ID)) return; // already running
   const hostname = location.hostname;
-  const settings = storage.getSettings();
+  let settings = storage.getSettings();
   const site = storage.getSiteRecord(hostname) || {};
   const csp = createCspMonitor(document);
   const env = describeEnvironment(document);
@@ -31,7 +32,11 @@ function main() {
   slots.panel.set(PANEL_HOST_CSS);
   slots.library.set(LIBRARY_CSS);
 
-  const panel = createPanel({
+  const hooks = {};
+  let pipeline = null;
+  let panel = null;
+
+  panel = createPanel({
     doc: document,
     styles: STYLES,
     settings,
@@ -40,27 +45,35 @@ function main() {
     handlers: {
       onToggleSite(enabled) {
         storage.saveSiteRecord(hostname, { enabled });
-        panel.setStatus(enabled ? 'enabled — reload to apply' : 'disabled for this site', enabled ? 'ok' : '');
-        setState(enabled ? 'idle' : 'disabled');
+        if (!enabled) {
+          pipeline.restore();
+          panel.setStatus('disabled for this site');
+          setState('disabled');
+        } else {
+          panel.setStatus('enabled — redesigning', 'ok');
+          pipeline.runDesign({});
+        }
       },
       onStyleChange(style) {
-        storage.saveSettings({ style });
+        settings = storage.saveSettings({ style });
       },
-      onRedesign() {
-        panel.setStatus('design pipeline arrives in phase 3', 'err');
+      onRedesign({ style }) {
+        settings = storage.saveSettings({ style });
+        pipeline.runDesign({ styleId: style });
       },
       onRestore() {
-        slots.design.clear();
-        slots.patch.clear();
-        slots.fallback.clear();
-        slots.icons.clear();
-        panel.setStatus('original styles restored');
+        pipeline.restore();
+        panel.setStatus('original styles restored (cache kept)');
+        setState('idle');
       },
       onClearSite() {
+        pipeline.restore();
         storage.clearSiteRecord(hostname);
         panel.setStatus('site cache cleared');
+        panel.setReport('');
       },
       onClearAll() {
+        pipeline.restore();
         storage.clearAllSiteRecords();
         panel.setStatus('all site caches cleared');
       },
@@ -75,11 +88,13 @@ function main() {
         panel.setStatus('API key removed');
       },
       onSettingsChange(patch) {
-        storage.saveSettings(patch);
+        settings = storage.saveSettings(patch);
         panel.setStatus('settings saved', 'ok');
       },
     },
   });
+
+  pipeline = createPipeline({ doc: document, hostname, slots, panel, setState, getSettings: () => (settings = storage.getSettings()), hooks });
 
   storage.registerMenuCommand('retro-web: set Claude API key', () => {
     const k = prompt('Paste your Claude API key (stored only in Tampermonkey storage):');
@@ -100,6 +115,7 @@ function main() {
     panel.setReport(text);
     panel.showReport();
   });
+  storage.registerMenuCommand('retro-web: redesign this page', () => pipeline.runDesign({}));
   storage.registerMenuCommand('retro-web: toggle on this site', () => {
     const rec = storage.getSiteRecord(hostname) || {};
     const enabled = rec.enabled === false;
@@ -110,14 +126,25 @@ function main() {
 
   const notes = [];
   if (!slots.working()) notes.push('styles blocked by CSP');
-  if (!env.webgpu) notes.push('no WebGPU');
+  if (!env.webgpu) notes.push('no WebGPU in page (host decides)');
   if (site.enabled === false) {
     panel.setStatus('disabled for this site');
     setState('disabled');
     return;
   }
+  if (site.css) {
+    pipeline.applyCached(site);
+    panel.setReport(formatReport(site));
+    panel.setStatus(`cached design (${site.style})` + (notes.length ? ' · ' + notes.join(', ') : ''), 'ok');
+    setState('done', { cached: true, style: site.style });
+    return;
+  }
   panel.setStatus(`v${VERSION} ready` + (notes.length ? ' · ' + notes.join(', ') : ''), notes.length ? 'err' : 'ok');
   setState('idle', { env, blocked: [...csp.blocked] });
+  if (settings.autoDesign) {
+    // let the page settle (fonts, late scripts) before summarizing
+    setTimeout(() => pipeline.runDesign({}), settings.settleDelayMs);
+  }
 }
 
 try {

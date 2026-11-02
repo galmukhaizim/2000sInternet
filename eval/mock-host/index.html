@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>retro-web mock model host</title></head>
+<body>
+<p>Mock model host for tests: speaks the retro-web host protocol and streams canned CSS. No GPU needed.</p>
+<script>
+(() => {
+  const NS = 'retro-web';
+  const post = (m) => window.parent.postMessage({ ns: NS, ...m }, '*');
+  const params = new URLSearchParams(location.search);
+  const delay = Number(params.get('delay') || 3);
+  const DESIGN = `
+/* A Win98 take, streamed by the mock host */
+body { background: var(--win-gray); font-family: var(--font-ms-sans); font-size: 12px; color: #000; cursor: var(--cursor-arrow); }
+a { color: #000080; text-decoration: underline; }
+h1, h2, h3 { font-family: var(--font-tahoma); color: #000080; }
+h1 { font-size: 22px; border-bottom: 2px solid #808080; }
+p { font-size: 12px; line-height: 1.4; }
+nav a { background-image: var(--icon-folder); background-repeat: no-repeat; background-position: 4px center; padding-left: 24px; border: var(--bevel-out); background-color: var(--win-gray); margin-right: 4px; text-decoration: none; }
+header, .site-header, .pagetop { background: var(--grad-titlebar); color: #fff; padding: 4px 8px; }
+footer { background: #c0c0c0; border-top: 2px solid #fff; font-size: 11px; padding: 8px; }
+button, input[type=submit], .cta { border: var(--bevel-out); background: var(--win-gray); color: #000; font-family: var(--font-ms-sans); font-size: 11px; padding: 3px 10px; border-radius: 0; }
+input, select, textarea { border: var(--bevel-in); background: #fff; font-family: var(--font-ms-sans); border-radius: 0; }
+img { border: 1px solid #000; }
+table { border: var(--bevel-in); background: #fff; }
+/* icon-request: shopping-bag | a paper shopping bag with handles */
+.cart, a.cart { background-image: var(--icon-shopping-bag); background-repeat: no-repeat; padding-left: 20px; }
+/* apply-class: button | retro-bevel-btn */
+/* apply-class: aside, .sidebar, .widget | retro-window */
+.nope-this-matches-nothing { color: red; }
+main { background: #fff; border: var(--bevel-in); padding: 12px; }
+`;
+  const PATCH = `
+nav a { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px 2px 24px; }
+p { font-size: 12px; }
+`;
+  let loaded = null;
+  window.addEventListener('message', (e) => {
+    if (e.source !== window.parent) return;
+    const m = e.data;
+    if (!m || m.ns !== NS) return;
+    if (m.t === 'hello') post({ t: 'ready', version: 'mock', webgpu: params.get('webgpu') !== '0', reason: params.get('webgpu') === '0' ? 'mock says no' : undefined, modelId: loaded });
+    if (m.t === 'load') {
+      let i = 0;
+      const tick = setInterval(() => {
+        i++;
+        post({ t: 'progress', text: `Loading model from cache[${i}/5]`, progress: i / 5 });
+        if (i >= 5) { clearInterval(tick); loaded = m.modelId; post({ t: 'loaded', modelId: m.modelId }); }
+      }, 20);
+    }
+    if (m.t === 'generate') {
+      const isPatch = m.messages.some((x) => /REPORT:/.test(x.content || ''));
+      const text = isPatch ? PATCH : DESIGN;
+      let pos = 0;
+      const step = () => {
+        const chunk = text.slice(pos, pos + 17);
+        pos += 17;
+        if (chunk) post({ t: 'delta', id: m.id, text: chunk });
+        if (pos < text.length) setTimeout(step, delay);
+        else post({ t: 'done', id: m.id, text, usage: { prompt_tokens: 1000, completion_tokens: text.length / 4 }, finish: 'stop' });
+      };
+      setTimeout(step, delay);
+    }
+  });
+})();
+</script>
+</body>
+</html>
