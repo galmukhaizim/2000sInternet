@@ -166,12 +166,28 @@ A small Win98-style window in the bottom-right corner:
 5. Remove the key: requests fall back to the closest library icon or the
    placeholder; the design still completes.
 
+### Phase 5 — inspector and self-correction loop
+
+1. `npm test` covers every inspector check with synthetic geometry, the
+   deterministic fallbacks and the loop itself.
+2. Redesign a page: after the rules stream in, the status goes
+   `inspecting layout…` → `repair round 1/3: N issue(s)…` → … → `done: … · issues 7→1`.
+3. **Report** shows `REPAIR: 7 issue(s) found → 1 remaining after 3 round(s), 1
+   deterministic fix(es)`, one line per round (`before→after issues, N patch
+   rules`) and the remaining issues as `type: selector | measured detail`, e.g.
+   `icon-off-center: button.search-btn > svg | offset x=+5px y=-3px from the center of button.search-btn`.
+4. *Advanced → Repair rounds* = 0 skips the model rounds (inspector +
+   deterministic fixes only); the cached design stores patch and fallback CSS
+   separately so **Report** stays meaningful on cached visits.
+5. The mock host (`eval/mock-host/`) answers repair prompts with a canned patch,
+   so the whole loop can be exercised without a GPU.
+
 ## Status
 
 - [x] Phase 1 — repo, build tooling, userscript shell, dev stub, panel skeleton
 - [x] Phase 2 — asset library + manifest, page summarizer, validator
 - [x] Phase 3 — in-browser model: design generation, streaming, per-domain cache
 - [x] Phase 4 — Claude API icon generation, sanitizer, shared icon cache
-- [ ] Phase 5 — inspector + self-correction loop
+- [x] Phase 5 — inspector + self-correction loop
 - [ ] Phase 6 — eval harness
 - [ ] Phase 7 — training pipeline

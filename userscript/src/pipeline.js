@@ -8,6 +8,8 @@ import { libraryClassNames, libraryIconNames } from './assets/index.js';
 import { pickStyle, getStyle } from './model/styles.js';
 import { ModelClient, describeModelError } from './model/engine.js';
 import { generateDesign } from './model/designer.js';
+import { snapshotVisibility } from './repair/inspect.js';
+import { runRepairLoop } from './repair/loop.js';
 import * as storage from './storage.js';
 
 export function createPipeline({ doc, hostname, slots, panel, setState, getSettings, hooks = {} }) {
@@ -106,6 +108,7 @@ export function createPipeline({ doc, hostname, slots, panel, setState, getSetti
       slots.icons.clear();
       setState('designing', { style: style.id });
       status(`summarizing page…`);
+      const baseline = snapshotVisibility(doc);
       const summary = summarizePage(doc, { tokenBudget: settings.summaryTokenBudget });
       status(`loading designer model…`);
       const c = getClient(settings);
@@ -155,10 +158,12 @@ export function createPipeline({ doc, hostname, slots, panel, setState, getSetti
       let patchCss = '';
       let fallbackCss = '';
       let report = null;
-      if (hooks.repair) {
+      if (settings.inspect !== false) {
         setState('repairing', { style: style.id });
         status('inspecting layout…');
-        const rep = await hooks.repair({ client: c, doc, design, style, settings, signal, slots, status, applyDirectives });
+        await new Promise((r) => setTimeout(r, settings.settleDelayMs || 0));
+        const repairFn = hooks.repair || runRepairLoop;
+        const rep = await repairFn({ client: c, doc, designCss: design.css, style, settings, baseline, iconVars: [...referenced], slots, signal, status });
         if (rep) {
           patchCss = rep.patchCss || '';
           fallbackCss = rep.fallbackCss || '';
@@ -193,8 +198,8 @@ export function createPipeline({ doc, hostname, slots, panel, setState, getSetti
       });
       lastResult = record;
       const secs = ((Date.now() - t0) / 1000).toFixed(0);
-      const remaining = report && report.issues ? report.issues.length : 0;
-      status(`done: ${style.name} · ${design.kept} rules · ${secs}s${remaining ? ` · ${remaining} issue(s) left` : ''}`, 'ok');
+      const remaining = report ? report.total : 0;
+      status(`done: ${style.name} · ${design.kept} rules · ${secs}s${report ? ` · issues ${report.initial}→${remaining}` : ''}`, 'ok');
       panel && panel.setReport(formatReport(record));
       setState('done', { style: style.id, rules: design.kept });
       return record;
@@ -235,7 +240,12 @@ export function formatReport(record) {
   if (record.iconRequests && record.iconRequests.length) L.push(`icon requests: ${record.iconRequests.map((r) => r.name).join(', ')}`);
   if (record.iconResults && record.iconResults.length) L.push(`icons: ${record.iconResults.map((r) => `${r.name}←${r.source}${r.alias ? '(' + r.alias + ')' : ''}${r.reason ? ' [' + r.reason + ']' : ''}`).join(', ')}`);
   if (record.applyClass && record.applyClass.length) L.push(`classes: ${record.applyClass.map((a) => `${a.selector}→.${a.className}`).join(', ')}`);
-  if (record.report && record.report.text) L.push('', 'ISSUES:', record.report.text);
-  else L.push('', 'ISSUES: (none recorded)');
+  const rep = record.report;
+  if (rep) {
+    const rounds = (rep.rounds || []).map((r) => `round ${r.round}: ${r.before}→${r.after} issues, ${r.kept} patch rules${r.error ? ' (error: ' + r.error + ')' : ''}`);
+    L.push('', `REPAIR: ${rep.initial} issue(s) found → ${rep.total} remaining after ${(rep.rounds || []).length} round(s)${rep.fixedByFallback && rep.fixedByFallback.length ? `, ${rep.fixedByFallback.length} deterministic fix(es)` : ''}`);
+    L.push(...rounds);
+    L.push('', 'REMAINING ISSUES:', rep.text || 'no issues');
+  } else L.push('', 'ISSUES: (not inspected)');
   return L.join('\n');
 }

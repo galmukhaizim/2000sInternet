@@ -11,3 +11,6 @@ export { createIconResolver, matchLibraryIcon } from './icons/index.js';
 export { createIconCache, iconHash } from './icons/cache.js';
 export { buildIconRequest, extractSvgFromResponse, ICON_SYSTEM_PROMPT } from './icons/claude.js';
 export { DESIGN_SYSTEM_PROMPT, REPAIR_SYSTEM_PROMPT, designMessages, repairMessages } from './model/prompts.js';
+export { inspectPage, snapshotVisibility, renderReport, createInspectorMeasure, contrastRatio, parseColor } from './repair/inspect.js';
+export { buildFallbackCss } from './repair/fallbacks.js';
+export { runRepairLoop, trimCssForReport } from './repair/loop.js';
