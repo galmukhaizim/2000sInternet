@@ -182,6 +182,26 @@ A small Win98-style window in the bottom-right corner:
 5. The mock host (`eval/mock-host/`) answers repair prompts with a canned patch,
    so the whole loop can be exercised without a GPU.
 
+### Phase 6 — eval harness
+
+```bash
+npm run build
+node eval/run.mjs --fixtures --mock --label mock      # offline, no GPU: fixture pages + canned host
+node eval/run.mjs --label qwen-coder-1.5b             # real model host on the sites in eval/sites.json
+node eval/run.mjs --sites my-sites.json --style win98 --rounds 2 --limit 3
+node eval/compare.mjs eval/out/qwen-coder-1.5b/summary.json eval/out/my-finetune/summary.json
+```
+
+Each run writes `eval/out/<label>/report.html` (before/after screenshots, issue
+counts on the original page, after the design and after repair, round-by-round
+numbers, remaining issues, links to the CSS) plus `summary.json` per run and
+`result.json` / `record.json` / `design.css` per site. `eval/compare.mjs` prints
+a per-site table of remaining issues for two runs, which is how model versions
+are compared. The real-model run launches Chromium with WebGPU flags; it needs a
+GPU (software WebGPU is far too slow for a 1.5B model). Set `ANTHROPIC_API_KEY`
+in the environment to enable icon generation during eval: Node performs the
+request and injects the key, the page only ever sees a sentinel.
+
 ## Status
 
 - [x] Phase 1 — repo, build tooling, userscript shell, dev stub, panel skeleton
@@ -189,5 +209,5 @@ A small Win98-style window in the bottom-right corner:
 - [x] Phase 3 — in-browser model: design generation, streaming, per-domain cache
 - [x] Phase 4 — Claude API icon generation, sanitizer, shared icon cache
 - [x] Phase 5 — inspector + self-correction loop
-- [ ] Phase 6 — eval harness
+- [x] Phase 6 — eval harness
 - [ ] Phase 7 — training pipeline

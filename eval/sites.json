@@ -1,0 +1,10 @@
+[
+  { "name": "example", "url": "https://example.com/" },
+  { "name": "wikipedia-geocities", "url": "https://en.wikipedia.org/wiki/GeoCities" },
+  { "name": "hacker-news", "url": "https://news.ycombinator.com/" },
+  { "name": "mdn-css", "url": "https://developer.mozilla.org/en-US/docs/Web/CSS" },
+  { "name": "w3c", "url": "https://www.w3.org/" },
+  { "name": "cnn-lite", "url": "https://lite.cnn.com/" },
+  { "name": "npr-text", "url": "https://text.npr.org/" },
+  { "name": "old-reddit", "url": "https://old.reddit.com/r/web_design/" }
+]
