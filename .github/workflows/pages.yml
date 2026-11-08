@@ -1,7 +1,11 @@
-# Builds the userscript + model host on every push and publishes userscript/dist
-# to GitHub Pages, so Tampermonkey can install/update from the repo and the
-# model host runs at https://galmukhaizim.github.io/2000sInternet/host/ without
-# anyone running a local server.
+# Builds and tests the userscript + model host on every push. On the default
+# branch it also publishes userscript/dist to GitHub Pages, so Tampermonkey can
+# install/update from the repo and the model host runs at
+# https://galmukhaizim.github.io/2000sInternet/host/ with no local server.
+#
+# One-time setup: repo Settings → Pages → Build and deployment → Source:
+# "GitHub Actions". Until then the `publish` job fails with
+# "Create Pages site failed" while `build` stays green.
 name: build-and-publish
 on:
   push:
@@ -9,8 +13,6 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-  pages: write
-  id-token: write
 concurrency:
   group: pages
   cancel-in-progress: true
@@ -37,19 +39,29 @@ jobs:
           <p><a href="retro.user.js">Install the userscript</a> (Tampermonkey opens an install dialog) ·
           <a href="host/">model host page</a> · <a href="https://github.com/galmukhaizim/2000sInternet">source</a></p>
           HTML
-      - uses: actions/configure-pages@v5
+      - uses: actions/upload-artifact@v4
         with:
-          enablement: true
-      - uses: actions/upload-pages-artifact@v3
-        with:
+          name: site
           path: userscript/dist
-  deploy:
+          retention-days: 7
+  publish:
     if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: site
+          path: site
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
       - id: deployment
         uses: actions/deploy-pages@v4
