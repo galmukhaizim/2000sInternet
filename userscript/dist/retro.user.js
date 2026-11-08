@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         retro-web
 // @namespace    https://github.com/galmukhaizim/2000sInternet
-// @version      0.4.0
+// @version      0.4.1
 // @description  Redesigns any website in a 2000s internet aesthetic using a small language model running in your browser
 // @author       galmukhaizim
 // @homepageURL  https://github.com/galmukhaizim/2000sInternet
@@ -33,7 +33,7 @@
 
 (() => {
   // userscript/src/config.js
-  var VERSION = "0.4.0";
+  var VERSION = "0.4.1";
   var CACHE_VERSION = 2;
   var DEFAULTS = {
     // --- model host (fixed origin iframe that runs WebLLM) ---
@@ -1581,15 +1581,15 @@
     }).slice(0, 6);
     const buttonEls = visible.filter((e) => e.localName === "button" || e.localName === "input" && ["submit", "button"].includes(e.type) || e.getAttribute("role") === "button" || e.localName === "a" && /\b(btn|button|cta)\b/i.test(e.className || ""));
     const buttonGroups = groupBy(buttonEls, (e) => patternSelector(e)).slice(0, 6);
-    const buttonText = (sel) => {
+    const buttonInfo = (sel) => {
       let el = null;
       try {
         el = buttonEls.find((e) => e.matches(sel));
       } catch {
         el = null;
       }
-      if (!el) return "";
-      return trunc(el.getAttribute("aria-label") || el.value || el.textContent || el.title || "", 30);
+      if (!el) return { text: "", hasIcon: false };
+      return { text: trunc(el.textContent || el.value || el.getAttribute("aria-label") || el.title || "", 30), hasIcon: !!el.querySelector('svg, img, [class*="icon"]') };
     };
     const navLinks = landmarks.filter((l) => l.role === "nav").map((l) => `${l.selector} a`);
     const navLinkList = [];
@@ -1602,10 +1602,10 @@
       }
       if (!el) continue;
       for (const a of [...el.querySelectorAll("a[href]")].slice(0, 16)) {
-        const text2 = trunc(a.getAttribute("aria-label") || a.textContent || a.title || "", 30);
+        const text2 = trunc(a.textContent || a.getAttribute("aria-label") || a.title || "", 30);
         const href = a.getAttribute("href");
         if (!href || href.length > 200 || /^(javascript|data):/i.test(href)) continue;
-        navLinkList.push({ nav: l.selector, text: text2, href });
+        navLinkList.push({ nav: l.selector, text: text2, href, hasIcon: !!a.querySelector('svg, img, [class*="icon"]') });
       }
     }
     const inputs = visible.filter((e) => ["input", "select", "textarea"].includes(e.localName) && !["hidden", "submit", "button", "checkbox", "radio"].includes(e.type));
@@ -1628,7 +1628,7 @@
       fonts,
       icons: { count: smallImgs.length, parents: iconParents.map(([selector, count]) => ({ selector, count })) },
       bigImages: bigImgs.slice(0, 5).map((o) => ({ selector: patternSelector(o.el), w: o.w, h: o.h })),
-      buttons: buttonGroups.map(([selector, count]) => ({ selector, count, text: buttonText(selector) })),
+      buttons: buttonGroups.map(([selector, count]) => ({ selector, count, ...buttonInfo(selector) })),
       navLinkSelectors: navLinks,
       navLinks: navLinkList,
       h1: h1 ? trunc(h1.textContent, 80) : null,
@@ -2713,6 +2713,8 @@ Add 10 to 20 extra rules ONLY for the site-specific elements named in the PAGE S
     "text-clipped": 2,
     overlap: 2,
     "icon-off-center": 2,
+    "icon-overlaps-text": 2,
+    "icon-duplicate": 1,
     "font-too-small": 1,
     "edge-touch": 1,
     "spacing-inconsistent": 1,
@@ -2876,15 +2878,36 @@ Add 10 to 20 extra rules ONLY for the site-specific elements named in the PAGE S
     };
     const visible = all.filter(isVisible);
     const textEls = visible.filter(hasOwnText).slice(0, 800);
+    const scrollCache = /* @__PURE__ */ new Map();
+    const inScroller = (el) => {
+      let cur = el.parentElement;
+      const path = [];
+      let result = false;
+      while (cur && cur !== doc.documentElement && cur !== doc.body) {
+        if (scrollCache.has(cur)) {
+          result = scrollCache.get(cur);
+          break;
+        }
+        path.push(cur);
+        const o = S(cur);
+        if (/auto|scroll/.test(o.overflowX || o.overflow || "")) {
+          result = true;
+          break;
+        }
+        cur = cur.parentElement;
+      }
+      for (const p of path) scrollCache.set(p, result);
+      return result;
+    };
     const sc = M.scroll(doc.documentElement);
     if (sc.scrollWidth > sc.clientWidth + 2 && sc.clientWidth > 0) {
       add("overflow-x", "html", `page scrolls horizontally: content ${sc.scrollWidth}px, viewport ${sc.clientWidth}px`, { scrollWidth: sc.scrollWidth, clientWidth: sc.clientWidth });
-      const offenders = visible.filter((e) => R(e).right > vw + 2 && R(e).width > 20 && !["html", "body"].includes(e.localName)).sort((a, b) => R(b).right - R(a).right).slice(0, 3);
+      const offenders = visible.filter((e) => R(e).right > vw + 2 && R(e).width > 20 && !["html", "body"].includes(e.localName) && !inScroller(e)).sort((a, b) => R(b).right - R(a).right).slice(0, 3);
       for (const e of offenders) add("overflow-x", e, `extends to x=${Math.round(R(e).right)}px (viewport ${vw}px)`);
     }
     for (const el of textEls.slice(0, 400)) {
       const tr = M.textRect(el);
-      if (!tr) continue;
+      if (!tr || inScroller(el)) continue;
       if (tr.left <= 1 && tr.width > 10) add("edge-touch", el, `text starts at x=${Math.round(tr.left)}px (no left padding)`);
       else if (tr.right >= vw - 1 && tr.width > 10) add("edge-touch", el, `text ends at x=${Math.round(tr.right)}px, viewport edge`);
     }
@@ -2899,7 +2922,15 @@ Add 10 to 20 extra rules ONLY for the site-specific elements named in the PAGE S
       const vertical = rects.every((r, i) => i === 0 || r.top >= rects[i - 1].bottom - 2);
       const horizontal = !vertical && rects.every((r, i) => i === 0 || r.left >= rects[i - 1].right - 2);
       if (!vertical && !horizontal) continue;
-      const gaps = rects.slice(1).map((r, i) => Math.round(vertical ? r.top - rects[i].bottom : r.left - rects[i].right));
+      let gaps = rects.slice(1).map((r, i) => Math.round(vertical ? r.top - rects[i].bottom : r.left - rects[i].right));
+      const ps = S(parent);
+      const isFlex = /flex|grid/.test(ps.display || "");
+      if (isFlex && /space-|center|end/.test(ps.justifyContent || "")) continue;
+      if (isFlex && gaps.length >= 2) {
+        const sorted = [...gaps].sort((a, b) => b - a);
+        if (sorted[0] > 3 * Math.max(4, sorted[1])) gaps = gaps.filter((g) => g !== sorted[0]);
+      }
+      if (gaps.length < 2) continue;
       const min = Math.min(...gaps);
       const max = Math.max(...gaps);
       if (max - min > 12 && max > 4) add("spacing-inconsistent", parent, `${vertical ? "vertical" : "horizontal"} gaps between ${kids.length} ${el.localName} children vary ${min}px..${max}px`, { gaps, axis: vertical ? "y" : "x" });
@@ -2947,26 +2978,47 @@ Add 10 to 20 extra rules ONLY for the site-specific elements named in the PAGE S
         if (onlyChild && (Math.abs(dx) > tol || Math.abs(dy) > tol)) add("icon-off-center", g, `offset x=${dx > 0 ? "+" : ""}${dx}px y=${dy > 0 ? "+" : ""}${dy}px from the center of ${patternSelector(container)}`, { dx, dy });
       }
     }
-    for (const el of textEls.slice(0, 500)) {
+    const bgIconEls = [];
+    const iconGroups = /* @__PURE__ */ new Map();
+    const groupIcon = (type, el, detail) => {
+      const k = type + "|" + patternSelector(el);
+      const g = iconGroups.get(k) || { type, el, count: 0, detail };
+      g.count++;
+      iconGroups.set(k, g);
+    };
+    for (const el of visible.slice(0, 1500)) {
       const s = S(el);
       if (!s.backgroundImage || s.backgroundImage === "none" || !/no-repeat/.test(s.backgroundRepeat || "")) continue;
       const size = /(\d+(?:\.\d+)?)px/.exec(s.backgroundSize || "");
-      const iconH = size ? Math.min(48, num(size[1])) : 16;
-      if (iconH > 48) continue;
-      const pos = (s.backgroundPosition || "0% 0%").split(/\s+/);
-      const posY = pos[1] || "0%";
+      const iconW = size ? Math.min(48, num(size[1])) : 16;
+      if (iconW > 48) continue;
+      bgIconEls.push(el);
       const r = R(el);
-      const padT = num(s.paddingTop);
-      const padB = num(s.paddingBottom);
-      let iconTop;
-      if (posY.endsWith("%")) iconTop = r.top + (r.height - iconH) * (num(posY) / 100);
-      else iconTop = r.top + num(posY);
+      const pos = (s.backgroundPosition || "0% 0%").split(/\s+/);
+      const posX = pos[0] || "0%";
+      const posY = pos[1] || "0%";
+      const iconLeft = posX.endsWith("%") ? r.left + (r.width - iconW) * (num(posX) / 100) : /^(left|right|center)$/.test(posX) ? posX === "right" ? r.right - iconW : posX === "center" ? r.left + (r.width - iconW) / 2 : r.left : r.left + num(posX);
+      const iconTop = posY.endsWith("%") ? r.top + (r.height - iconW) * (num(posY) / 100) : posY === "center" ? r.top + (r.height - iconW) / 2 : r.top + num(posY);
+      if (!hasOwnText(el)) {
+        const g2 = el.querySelector && el.querySelector("svg, img");
+        if (g2 && isVisible(g2)) groupIcon("icon-duplicate", el, "background icon drawn behind an existing icon (svg/img)");
+        continue;
+      }
       const tr = M.textRect(el);
       if (!tr) continue;
-      const dy = Math.round(iconTop + iconH / 2 - (tr.top + tr.height / 2));
-      void padT;
-      void padB;
+      const overlap = Math.min(iconLeft + iconW, tr.right) - Math.max(iconLeft, tr.left);
+      if (overlap > 2 && iconTop < tr.bottom && iconTop + iconW > tr.top) {
+        groupIcon("icon-overlaps-text", el, `background icon overlaps the text by ${Math.round(overlap)}px (padding-left ${s.paddingLeft}, background-position ${pos.join(" ")})`);
+        continue;
+      }
+      const dy = Math.round(iconTop + iconW / 2 - (tr.top + tr.height / 2));
       if (Math.abs(dy) > tol) add("icon-off-center", el, `background icon is ${dy > 0 ? "+" : ""}${dy}px from the text center (background-position ${pos.join(" ")})`, { dy, background: true });
+      const g = el.querySelector && el.querySelector("svg, img");
+      if (g && isVisible(g) && R(g).width <= 48) groupIcon("icon-duplicate", el, `background icon added to an element that already has its own icon (${g.localName})`);
+    }
+    for (const g of iconGroups.values()) {
+      const sel = g.count > 1 ? patternSelector(g.el) : uniqueSelector(g.el, doc, 3);
+      add(g.type, sel, g.detail + (g.count > 1 ? ` \xD7${g.count}` : ""), { count: g.count, background: true });
     }
     for (const v of options.iconVars || []) {
       const val = (M.propertyValue(v) || "").trim();
@@ -3422,7 +3474,7 @@ Add 10 to 20 extra rules ONLY for the site-specific elements named in the PAGE S
       tables: "table"
     };
   }
-  function renderPack(styleId, data = {}, { maxNavIcons = 16 } = {}) {
+  function renderPack(styleId, data = {}, { maxNavIcons = 16, maxNavLinks = 40 } = {}) {
     const T = THEMES[styleId];
     if (!T) return { css: "", applyClass: [], styleId, notes: ["unknown style"] };
     const S = selectorsFromSummary(data);
@@ -3443,25 +3495,37 @@ Add 10 to 20 extra rules ONLY for the site-specific elements named in the PAGE S
     push(each(S.header, " a") + ", " + each(S.header, " a:visited"), decl("color", T.header.text || "inherit"));
     push(S.nav, box({ bg: T.nav.bg === "transparent" ? null : T.nav.bg, text: T.nav.text, border: T.nav.border, padding: T.nav.dense ? "2px 4px" : "4px 6px", font: T.nav.font }));
     const linkStyle = NAV_LINK[T.nav.link] || NAV_LINK.plain;
-    push(S.navLinks + ", " + each(S.navLinks, ":visited"), linkStyle(T) + (T.nav.icon ? ICON_SLOT : ""));
-    if (T.nav.link === "bevel") push(each(S.navLinks, ":active"), "border-style: inset; ");
-    if (T.nav.link === "bracket") {
-      push(each(S.navLinks, "::before"), 'content: "["; color: #008f11; ');
-      push(each(S.navLinks, "::after"), 'content: "]"; color: #008f11; ');
-    }
-    if (T.nav.icon) {
-      const seen = /* @__PURE__ */ new Set();
-      let n = 0;
-      for (const l of data.navLinks || []) {
-        if (!l.href || seen.has(l.nav + "|" + l.href) || n >= maxNavIcons) continue;
-        seen.add(l.nav + "|" + l.href);
-        const icon = iconForText(l.text, l.href, T.nav.icon);
-        push(`${l.nav} a[href="${esc(l.href)}"]`, `background-image: var(--icon-${icon}); `);
-        n++;
+    const navs = (data.landmarks || []).filter((l) => l.role === "nav");
+    const navEntries = navs.length ? navs.map((l) => ({ selector: l.selector, links: l.links || 0 })) : splitSelectorList(S.nav).map((sel) => ({ selector: sel, links: 0 }));
+    const iconNavs = /* @__PURE__ */ new Set();
+    for (const n of navEntries) {
+      const links = `${n.selector} a`;
+      if (n.links > maxNavLinks) {
+        push(`${links}, ${links}:visited`, decl("color", T.nav.text) + "text-decoration: none; " + decl("font-family", T.nav.font));
+        continue;
       }
-      push(S.navLinks, `background-image: var(--icon-${T.nav.icon}); `);
-      const def = R.pop();
-      R.splice(R.length - n, 0, def);
+      push(`${links}, ${links}:visited`, linkStyle(T) + (T.nav.icon ? ICON_SLOT : ""));
+      if (T.nav.link === "bevel") push(`${links}:active`, "border-style: inset; ");
+      if (T.nav.link === "bracket") {
+        push(`${links}::before`, 'content: "["; color: #008f11; ');
+        push(`${links}::after`, 'content: "]"; color: #008f11; ');
+      }
+      if (T.nav.icon) iconNavs.add(n.selector);
+    }
+    if (T.nav.icon && iconNavs.size) {
+      const seen = /* @__PURE__ */ new Set();
+      const iconRules = [];
+      const noIcon = [];
+      for (const l of data.navLinks || []) {
+        if (!iconNavs.has(l.nav) || !l.href || seen.has(l.nav + "|" + l.href)) continue;
+        seen.add(l.nav + "|" + l.href);
+        const sel = `${l.nav} a[href="${esc(l.href)}"]`;
+        if (l.hasIcon || !l.text) noIcon.push(sel);
+        else if (iconRules.length < maxNavIcons) iconRules.push(`${sel} { background-image: var(--icon-${iconForText(l.text, l.href, T.nav.icon)}); }`);
+      }
+      for (const nav of iconNavs) R.push(`${nav} a { background-image: var(--icon-${T.nav.icon}); }`);
+      R.push(...iconRules);
+      if (noIcon.length) R.push(`${noIcon.join(", ")} { background-image: none; padding-left: 8px; }`);
     }
     push(S.main, box({ ...T.main, bgImage: T.main.bgImage || "none" }) + (T.main.narrow ? `max-width: ${T.main.narrow}; margin-left: auto; margin-right: auto; ` : ""));
     push(S.sidebar, box({ ...T.sidebar, bgImage: "none" }));
@@ -3472,6 +3536,7 @@ Add 10 to 20 extra rules ONLY for the site-specific elements named in the PAGE S
     push(S.buttons, BUTTON[T.button] || BUTTON.bevel);
     if (BUTTON_HOVER[T.button]) push(each(S.buttons, ":hover"), BUTTON_HOVER[T.button]);
     for (const b of (data.buttons || []).slice(0, 8)) {
+      if (b.hasIcon || b.count > maxNavLinks) continue;
       const icon = b.text && b.text.length <= 24 ? iconForText(b.text, "", null) : null;
       if (icon) push(b.selector, `background-image: var(--icon-${icon}); background-repeat: no-repeat; background-position: 6px center; background-size: 16px 16px; padding-left: 26px; `);
     }
@@ -3495,7 +3560,7 @@ Add 10 to 20 extra rules ONLY for the site-specific elements named in the PAGE S
     if (X.cursorBlink) push("h1::after", 'content: "_"; animation: retro-blink 1s steps(2, start) infinite; ');
     if (X.skipIntro) push(each(S.header, "::after"), 'content: "skip intro \u25B8"; float: right; font-family: var(--font-arial); font-size: 11px; color: #ccff00; text-transform: lowercase; ');
     if (X.trafficLights) push(each(S.header, "::before"), 'content: ""; display: inline-block; width: 12px; height: 12px; border-radius: 50%; background-color: #ff5f57; box-shadow: 18px 0 0 #febc2e, 36px 0 0 #28c840; margin-right: 44px; vertical-align: middle; ');
-    if (X.categoryBars) push("h2, h3", `background-color: ${T.nav.bg === "transparent" ? "#eeeeee" : T.nav.bg}; color: ${T.heading.color}; padding: 2px 6px; border-left: 6px solid ${T.link.hover}; `);
+    if (X.categoryBars) push("h2", `background-color: ${T.nav.bg === "transparent" ? "#eeeeee" : T.nav.bg}; color: ${T.heading.color}; padding: 2px 6px; border-left: 6px solid ${T.link.hover}; `);
     if (X.sparkleHeading) push("h1", "background-image: var(--bg-tile-glitter); ");
     return { css: R.join("\n"), applyClass, styleId, selectors: S };
   }
@@ -3538,6 +3603,12 @@ Add 10 to 20 extra rules ONLY for the site-specific elements named in the PAGE S
             if (container !== sel) push(i, `${container} { display: inline-flex; align-items: center; justify-content: center; gap: 6px; line-height: normal; }`);
             push(i, `${sel} { display: inline-block; vertical-align: middle; margin: 0; flex: none; }`);
           }
+          break;
+        case "icon-overlaps-text":
+          push(i, `${sel} { padding-left: 24px; background-position: 4px center; background-size: 16px 16px; }`);
+          break;
+        case "icon-duplicate":
+          push(i, `${sel} { background-image: none; }`);
           break;
         case "icon-missing":
           if (sel.startsWith("--icon-")) push(i, `:root { ${sel}: var(--icon-placeholder); }`);
@@ -3668,7 +3739,13 @@ Add 10 to 20 extra rules ONLY for the site-specific elements named in the PAGE S
     let fixed = [];
     if (report.issues.length) {
       const fb = buildFallbackCss(report.issues, { doc });
-      const v = validateCss(fb.css, { doc, mode: "patch" });
+      let v = validateCss(fb.css, { doc, mode: "patch" });
+      const refused = v.dropped.filter((d) => /too-broad/.test(d.reason) && /^padding/.test(d.prop || ""));
+      if (refused.length) {
+        const extra = [...new Set(refused.map((d) => d.selector))].map((sel) => `${sel} { background-image: none; }`).join("\n");
+        v = validateCss(fb.css + "\n" + extra, { doc, mode: "patch" });
+        fb.fixed.push(...refused.map((d) => ({ type: "icon-overlaps-text", selector: d.selector, note: "icon removed (too many elements for padding)" })));
+      }
       fallbackCss = v.css;
       fixed = fb.fixed;
       if (slots) slots.fallback.set([slots.fallback.css, fallbackCss].filter(Boolean).join("\n"));

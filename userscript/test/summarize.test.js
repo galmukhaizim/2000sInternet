@@ -128,7 +128,7 @@ describe('nav links and button texts', () => {
   it('lists nav link texts/hrefs and button labels', () => {
     document.body.innerHTML = '<nav class="main-nav"><a href="/">Home</a><a href="/shop">Shop</a><a href="javascript:void(0)">x</a></nav><button class="btn">Add to cart</button>';
     const { data, text } = summarizePage(document);
-    expect(data.navLinks).toEqual([{ nav: 'nav.main-nav', text: 'Home', href: '/' }, { nav: 'nav.main-nav', text: 'Shop', href: '/shop' }]);
+    expect(data.navLinks).toEqual([{ nav: 'nav.main-nav', text: 'Home', href: '/', hasIcon: false }, { nav: 'nav.main-nav', text: 'Shop', href: '/shop', hasIcon: false }]);
     expect(data.buttons[0].text).toBe('Add to cart');
     expect(text).toContain('NAV LINKS: nav.main-nav a — Home, Shop');
     expect(text).toContain('"Add to cart"');

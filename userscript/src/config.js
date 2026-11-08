@@ -1,7 +1,7 @@
 // Defaults for everything configurable. User overrides live in GM storage under
 // the `settings` key (see storage.js) and are merged over these at runtime.
 
-export const VERSION = '0.4.0';
+export const VERSION = '0.4.1';
 
 // Bump when the cached site record format or the library changes incompatibly.
 export const CACHE_VERSION = 2;

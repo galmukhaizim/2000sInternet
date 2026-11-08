@@ -73,3 +73,29 @@ describe('style packs', () => {
     expect(m.css).toContain('body::after { content: "" !important; position: fixed !important;');
   });
 });
+
+describe('style packs on app-like pages', () => {
+  it('gives huge navs only colors (no icons, no padding) and leaves iconed links alone', () => {
+    const { data } = load('app');
+    const guide = data.landmarks.find((l) => l.role === 'nav');
+    expect(guide.links).toBeGreaterThan(40);
+    const pack = renderPack('win98', data);
+    expect(pack.css).not.toMatch(/#guide a[^{]*\{[^}]*background-image: var\(--icon-folder\)/);
+    expect(pack.css).not.toMatch(/#guide a[^{]*\{[^}]*padding-left: 24px/);
+    expect(pack.css).toContain('#guide a, #guide a:visited { color: #000000; text-decoration: none;');
+    // card titles (h3) are never turned into category bars
+    const portal = renderPack('portal-1999', data);
+    expect(portal.css).not.toMatch(/^h2, h3 \{/m);
+    expect(portal.css).toMatch(/^h2 \{ background-color/m);
+  });
+  it('skips background icons for links and buttons that already have one', () => {
+    document.body.innerHTML = '<nav class="main-nav"><a href="/"><svg></svg>Home</a><a href="/about">About</a></nav><button class="btn-ask"><svg></svg>Ask</button><button class="btn-search">Search</button>';
+    const { data } = summarizePage(document);
+    expect(data.navLinks.map((l) => l.hasIcon)).toEqual([true, false]);
+    const pack = renderPack('win98', data);
+    expect(pack.css).toContain('nav.main-nav a[href="/about"] { background-image: var(--icon-info); }');
+    expect(pack.css).toContain('nav.main-nav a[href="/"] { background-image: none; padding-left: 8px; }');
+    expect(pack.css).not.toMatch(/button\.btn-ask \{ background-image/);
+    expect(pack.css).toMatch(/button\.btn-search \{ background-image: var\(--icon-search\)/);
+  });
+});

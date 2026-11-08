@@ -243,3 +243,42 @@ describe('runRepairLoop', () => {
     expect(out.split('\n').length).toBeLessThan(30);
   });
 });
+
+describe('icon placement checks', () => {
+  const BG = { backgroundImage: 'url("data:x")', backgroundRepeat: 'no-repeat', backgroundSize: '16px 16px', backgroundPosition: '4px 50%' };
+  it('flags a background icon drawn under the text when padding is missing', () => {
+    document.body.innerHTML = '<nav><a class="chip">Music</a><a class="ok">Gaming</a></nav>';
+    const r = inspectPage(document, {
+      measure: fakeMeasure({
+        rects: { 'a.chip': [0, 0, 80, 32], 'a.ok': [100, 0, 100, 32] },
+        textRects: { 'a.chip': [12, 8, 50, 16], 'a.ok': [124, 8, 50, 16] },
+        styles: { 'a.chip': { ...BG, paddingLeft: '12px' }, 'a.ok': { ...BG, paddingLeft: '24px' } },
+      }),
+    });
+    expect(types(r)).toEqual(['icon-overlaps-text']);
+    expect(r.issues[0].selector).toBe('a.chip');
+    expect(r.issues[0].detail).toContain('overlaps the text by 8px');
+  });
+  it('flags duplicate icons on links that already carry an svg', () => {
+    document.body.innerHTML = '<nav><a class="guide"><svg></svg><span>Home</span></a><a class="only"><svg></svg></a></nav>';
+    const r = inspectPage(document, {
+      measure: fakeMeasure({
+        rects: { 'a.guide': [0, 0, 200, 40], 'a.guide > svg': [12, 8, 24, 24], 'a.only': [0, 50, 40, 40], 'a.only > svg': [8, 58, 24, 24] },
+        textRects: { 'a.guide': [60, 12, 40, 16] },
+        styles: { 'a.guide': { ...BG, paddingLeft: '24px' }, 'a.only': { ...BG, paddingLeft: '24px' } },
+      }),
+    });
+    expect(types(r).sort()).toEqual(['icon-duplicate', 'icon-duplicate']);
+  });
+  it('fixes overlaps by padding, or by removing the icon when padding is too broad', async () => {
+    document.body.innerHTML = '<nav class="big">' + Array.from({ length: 200 }, (_, i) => `<a href="/${i}">Item ${i}</a>`).join('') + '</nav><a class="single" href="/x">Solo</a>';
+    const fb = buildFallbackCss([{ type: 'icon-overlaps-text', selector: 'a.single', detail: '' }, { type: 'icon-duplicate', selector: 'a.single', detail: '' }], { doc: document });
+    expect(fb.css).toContain('a.single { padding-left: 24px;');
+    expect(fb.css).toContain('a.single { background-image: none; }');
+    const inspect = () => ({ issues: [{ type: 'icon-overlaps-text', selector: 'nav.big a', detail: '', severity: 2 }], total: 1, counts: {}, text: 'x' });
+    const r = await runRepairLoop({ client: null, doc: document, designCss: '', style: null, settings: { maxRepairRounds: 0 }, inspect, settleMs: 0 });
+    expect(r.fallbackCss).not.toContain('padding-left');
+    expect(r.fallbackCss).toContain('nav.big a { background-image: none !important; }');
+    expect(r.report.fixedByFallback.some((f) => /icon removed/.test(f.note || ''))).toBe(true);
+  });
+});

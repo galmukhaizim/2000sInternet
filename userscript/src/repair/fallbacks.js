@@ -43,6 +43,14 @@ export function buildFallbackCss(issues, { doc } = {}) {
           push(i, `${sel} { display: inline-block; vertical-align: middle; margin: 0; flex: none; }`);
         }
         break;
+      case 'icon-overlaps-text':
+        // make room for the icon; if the validator refuses the padding (too many
+        // elements), loop.js removes the icon instead (see onDropped)
+        push(i, `${sel} { padding-left: 24px; background-position: 4px center; background-size: 16px 16px; }`);
+        break;
+      case 'icon-duplicate':
+        push(i, `${sel} { background-image: none; }`);
+        break;
       case 'icon-missing':
         if (sel.startsWith('--icon-')) push(i, `:root { ${sel}: var(--icon-placeholder); }`);
         else if (/zero-size/.test(i.detail)) push(i, `${sel} { display: inline-block; width: 16px; height: 16px; min-width: 16px; min-height: 16px; }`);

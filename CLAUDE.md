@@ -117,8 +117,19 @@ training/                     Python pipeline (scrape, teacher dataset, repair d
    description. Every SVG goes through `sanitize.js`. Cache by hash of
    name+description in GM storage under `icon:<hash>`.
 8. **Repair loop** = inspect → model patch → validate → apply → re-inspect, up to
-   `settings.maxRepairRounds` (default 3). Leftover issues get deterministic fixes
-   from `repair/fallbacks.js` and are logged in the panel report.
+   `settings.maxRepairRounds` (default 1 since the hybrid flow). Leftover issues
+   get deterministic fixes from `repair/fallbacks.js` and are logged in the panel
+   report. A quick inspect+fallback pass (0 rounds) also runs right after the
+   style pack. Inspector issue types: overflow-x, edge-touch,
+   spacing-inconsistent, padding-collapsed/excessive, icon-off-center,
+   icon-overlaps-text, icon-duplicate, icon-missing, text-clipped, overlap,
+   contrast-low, font-too-small, invisible. When a padding fix is refused as too
+   broad, the loop removes the background icon instead (never leave an icon
+   under text).
+9a. **Packs and big navs**: `renderPack` gives full button/icon treatment only to
+   navs with ≤ 40 links (per nav); bigger navs (app sidebars, chip strips) get
+   colors only. Links/buttons that already contain an svg/img never get a
+   background icon (`navLinks[].hasIcon`, `buttons[].hasIcon`).
 9. **Summarizer, validator and inspector are pure functions of a `document`**
    (plus an injectable `measure` adapter for the inspector) so they run unchanged
    in the userscript, in vitest/jsdom, and inside Playwright for eval/training.

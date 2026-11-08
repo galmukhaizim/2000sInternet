@@ -421,15 +421,15 @@ export function summarizePage(doc = document, options = {}) {
   }).slice(0, 6);
   const buttonEls = visible.filter((e) => e.localName === 'button' || (e.localName === 'input' && ['submit', 'button'].includes(e.type)) || e.getAttribute('role') === 'button' || (e.localName === 'a' && /\b(btn|button|cta)\b/i.test(e.className || '')));
   const buttonGroups = groupBy(buttonEls, (e) => patternSelector(e)).slice(0, 6);
-  const buttonText = (sel) => {
+  const buttonInfo = (sel) => {
     let el = null;
     try {
       el = buttonEls.find((e) => e.matches(sel));
     } catch {
       el = null;
     }
-    if (!el) return '';
-    return trunc(el.getAttribute('aria-label') || el.value || el.textContent || el.title || '', 30);
+    if (!el) return { text: '', hasIcon: false };
+    return { text: trunc(el.textContent || el.value || el.getAttribute('aria-label') || el.title || '', 30), hasIcon: !!el.querySelector('svg, img, [class*="icon"]') };
   };
   const navLinks = landmarks.filter((l) => l.role === 'nav').map((l) => `${l.selector} a`);
   // Individual nav links (text + href) so packs/models can assign icons per link.
@@ -443,10 +443,10 @@ export function summarizePage(doc = document, options = {}) {
     }
     if (!el) continue;
     for (const a of [...el.querySelectorAll('a[href]')].slice(0, 16)) {
-      const text = trunc(a.getAttribute('aria-label') || a.textContent || a.title || '', 30);
+      const text = trunc(a.textContent || a.getAttribute('aria-label') || a.title || '', 30);
       const href = a.getAttribute('href');
       if (!href || href.length > 200 || /^(javascript|data):/i.test(href)) continue;
-      navLinkList.push({ nav: l.selector, text, href });
+      navLinkList.push({ nav: l.selector, text, href, hasIcon: !!a.querySelector('svg, img, [class*="icon"]') });
     }
   }
   const inputs = visible.filter((e) => ['input', 'select', 'textarea'].includes(e.localName) && !['hidden', 'submit', 'button', 'checkbox', 'radio'].includes(e.type));
@@ -472,7 +472,7 @@ export function summarizePage(doc = document, options = {}) {
     fonts,
     icons: { count: smallImgs.length, parents: iconParents.map(([selector, count]) => ({ selector, count })) },
     bigImages: bigImgs.slice(0, 5).map((o) => ({ selector: patternSelector(o.el), w: o.w, h: o.h })),
-    buttons: buttonGroups.map(([selector, count]) => ({ selector, count, text: buttonText(selector) })),
+    buttons: buttonGroups.map(([selector, count]) => ({ selector, count, ...buttonInfo(selector) })),
     navLinkSelectors: navLinks,
     navLinks: navLinkList,
     h1: h1 ? trunc(h1.textContent, 80) : null,

@@ -82,7 +82,14 @@ export async function runRepairLoop({ client, doc, designCss, style, settings, b
   let fixed = [];
   if (report.issues.length) {
     const fb = buildFallbackCss(report.issues, { doc });
-    const v = validateCss(fb.css, { doc, mode: 'patch' });
+    let v = validateCss(fb.css, { doc, mode: 'patch' });
+    // a padding fix refused as too broad leaves the icon under the text: drop the icon instead
+    const refused = v.dropped.filter((d) => /too-broad/.test(d.reason) && /^padding/.test(d.prop || ''));
+    if (refused.length) {
+      const extra = [...new Set(refused.map((d) => d.selector))].map((sel) => `${sel} { background-image: none; }`).join('\n');
+      v = validateCss(fb.css + '\n' + extra, { doc, mode: 'patch' });
+      fb.fixed.push(...refused.map((d) => ({ type: 'icon-overlaps-text', selector: d.selector, note: 'icon removed (too many elements for padding)' })));
+    }
     fallbackCss = v.css;
     fixed = fb.fixed;
     if (slots) slots.fallback.set([slots.fallback.css, fallbackCss].filter(Boolean).join('\n'));

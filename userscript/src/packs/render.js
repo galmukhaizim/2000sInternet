@@ -155,7 +155,7 @@ export function selectorsFromSummary(data = {}) {
   };
 }
 
-export function renderPack(styleId, data = {}, { maxNavIcons = 16 } = {}) {
+export function renderPack(styleId, data = {}, { maxNavIcons = 16, maxNavLinks = 40 } = {}) {
   const T = THEMES[styleId];
   if (!T) return { css: '', applyClass: [], styleId, notes: ['unknown style'] };
   const S = selectorsFromSummary(data);
@@ -180,27 +180,42 @@ export function renderPack(styleId, data = {}, { maxNavIcons = 16 } = {}) {
   push(each(S.header, ' a') + ', ' + each(S.header, ' a:visited'), decl('color', T.header.text || 'inherit'));
   push(S.nav, box({ bg: T.nav.bg === 'transparent' ? null : T.nav.bg, text: T.nav.text, border: T.nav.border, padding: T.nav.dense ? '2px 4px' : '4px 6px', font: T.nav.font }));
   const linkStyle = NAV_LINK[T.nav.link] || NAV_LINK.plain;
-  push(S.navLinks + ', ' + each(S.navLinks, ':visited'), linkStyle(T) + (T.nav.icon ? ICON_SLOT : ''));
-  if (T.nav.link === 'bevel') push(each(S.navLinks, ':active'), 'border-style: inset; ');
-  if (T.nav.link === 'bracket') {
-    push(each(S.navLinks, '::before'), 'content: "["; color: #008f11; ');
-    push(each(S.navLinks, '::after'), 'content: "]"; color: #008f11; ');
-  }
-  // nav icons matched to link text / href
-  if (T.nav.icon) {
-    const seen = new Set();
-    let n = 0;
-    for (const l of data.navLinks || []) {
-      if (!l.href || seen.has(l.nav + '|' + l.href) || n >= maxNavIcons) continue;
-      seen.add(l.nav + '|' + l.href);
-      const icon = iconForText(l.text, l.href, T.nav.icon);
-      push(`${l.nav} a[href="${esc(l.href)}"]`, `background-image: var(--icon-${icon}); `);
-      n++;
+  // Per nav: a normal menu (<= maxNavLinks links) gets the full button/icon
+  // treatment; a huge sidebar or chip strip only gets colors, so the validator
+  // never has to drop the padding that makes room for an icon.
+  const navs = (data.landmarks || []).filter((l) => l.role === 'nav');
+  const navEntries = navs.length ? navs.map((l) => ({ selector: l.selector, links: l.links || 0 })) : splitSelectorList(S.nav).map((sel) => ({ selector: sel, links: 0 }));
+  const iconNavs = new Set();
+  for (const n of navEntries) {
+    const links = `${n.selector} a`;
+    if (n.links > maxNavLinks) {
+      push(`${links}, ${links}:visited`, decl('color', T.nav.text) + 'text-decoration: none; ' + decl('font-family', T.nav.font));
+      continue;
     }
-    push(S.navLinks, `background-image: var(--icon-${T.nav.icon}); `); // default for the rest (earlier rules win by order? no: later wins) ->
-    // reorder: default first, specific after
-    const def = R.pop();
-    R.splice(R.length - n, 0, def);
+    push(`${links}, ${links}:visited`, linkStyle(T) + (T.nav.icon ? ICON_SLOT : ''));
+    if (T.nav.link === 'bevel') push(`${links}:active`, 'border-style: inset; ');
+    if (T.nav.link === 'bracket') {
+      push(`${links}::before`, 'content: "["; color: #008f11; ');
+      push(`${links}::after`, 'content: "]"; color: #008f11; ');
+    }
+    if (T.nav.icon) iconNavs.add(n.selector);
+  }
+  // nav icons matched to link text / href; links that already carry an icon
+  // (svg/img) or have no text keep theirs
+  if (T.nav.icon && iconNavs.size) {
+    const seen = new Set();
+    const iconRules = [];
+    const noIcon = [];
+    for (const l of data.navLinks || []) {
+      if (!iconNavs.has(l.nav) || !l.href || seen.has(l.nav + '|' + l.href)) continue;
+      seen.add(l.nav + '|' + l.href);
+      const sel = `${l.nav} a[href="${esc(l.href)}"]`;
+      if (l.hasIcon || !l.text) noIcon.push(sel);
+      else if (iconRules.length < maxNavIcons) iconRules.push(`${sel} { background-image: var(--icon-${iconForText(l.text, l.href, T.nav.icon)}); }`);
+    }
+    for (const nav of iconNavs) R.push(`${nav} a { background-image: var(--icon-${T.nav.icon}); }`); // default first, specific rules after
+    R.push(...iconRules);
+    if (noIcon.length) R.push(`${noIcon.join(', ')} { background-image: none; padding-left: 8px; }`);
   }
   push(S.main, box({ ...T.main, bgImage: T.main.bgImage || 'none' }) + (T.main.narrow ? `max-width: ${T.main.narrow}; margin-left: auto; margin-right: auto; ` : ''));
   push(S.sidebar, box({ ...T.sidebar, bgImage: 'none' }));
@@ -212,6 +227,7 @@ export function renderPack(styleId, data = {}, { maxNavIcons = 16 } = {}) {
   push(S.buttons, BUTTON[T.button] || BUTTON.bevel);
   if (BUTTON_HOVER[T.button]) push(each(S.buttons, ':hover'), BUTTON_HOVER[T.button]);
   for (const b of (data.buttons || []).slice(0, 8)) {
+    if (b.hasIcon || b.count > maxNavLinks) continue;
     const icon = b.text && b.text.length <= 24 ? iconForText(b.text, '', null) : null;
     if (icon) push(b.selector, `background-image: var(--icon-${icon}); background-repeat: no-repeat; background-position: 6px center; background-size: 16px 16px; padding-left: 26px; `);
   }
@@ -238,7 +254,7 @@ export function renderPack(styleId, data = {}, { maxNavIcons = 16 } = {}) {
   if (X.cursorBlink) push('h1::after', 'content: "_"; animation: retro-blink 1s steps(2, start) infinite; ');
   if (X.skipIntro) push(each(S.header, '::after'), 'content: "skip intro ▸"; float: right; font-family: var(--font-arial); font-size: 11px; color: #ccff00; text-transform: lowercase; ');
   if (X.trafficLights) push(each(S.header, '::before'), 'content: ""; display: inline-block; width: 12px; height: 12px; border-radius: 50%; background-color: #ff5f57; box-shadow: 18px 0 0 #febc2e, 36px 0 0 #28c840; margin-right: 44px; vertical-align: middle; ');
-  if (X.categoryBars) push('h2, h3', `background-color: ${T.nav.bg === 'transparent' ? '#eeeeee' : T.nav.bg}; color: ${T.heading.color}; padding: 2px 6px; border-left: 6px solid ${T.link.hover}; `);
+  if (X.categoryBars) push('h2', `background-color: ${T.nav.bg === 'transparent' ? '#eeeeee' : T.nav.bg}; color: ${T.heading.color}; padding: 2px 6px; border-left: 6px solid ${T.link.hover}; `);
   if (X.sparkleHeading) push('h1', 'background-image: var(--bg-tile-glitter); ');
 
   return { css: R.join('\n'), applyClass, styleId, selectors: S };
