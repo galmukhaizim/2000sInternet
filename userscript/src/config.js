@@ -1,14 +1,16 @@
 // Defaults for everything configurable. User overrides live in GM storage under
 // the `settings` key (see storage.js) and are merged over these at runtime.
 
-export const VERSION = '0.1.0';
+export const VERSION = '0.2.0';
 
 // Bump when the cached site record format or the library changes incompatibly.
 export const CACHE_VERSION = 1;
 
 export const DEFAULTS = {
   // --- model host (fixed origin iframe that runs WebLLM) ---
-  hostUrl: 'http://localhost:4173/',
+  // Published by .github/workflows/pages.yml. For local development run
+  // `npm run host` and set http://localhost:4173/ in the panel's Advanced section.
+  hostUrl: 'https://galmukhaizim.github.io/2000sInternet/host/',
   // Any id from WebLLM's prebuilt list (0.2.87). ~1.6 GB VRAM, code-tuned.
   modelId: 'Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC',
   // Later: your fine-tuned model on Hugging Face, e.g.

@@ -27,15 +27,36 @@ page ──► summarize.js ──► designer model (WebLLM, in a hidden iframe
                    per-domain cache (GM storage) · control panel
 ```
 
+## Install (one click)
+
+1. Install [Tampermonkey](https://www.tampermonkey.net/) in Chrome, Edge or Brave.
+   In `chrome://extensions` turn on **Developer mode** (recent Chrome needs it for
+   userscripts to run).
+2. Open this link; Tampermonkey shows an install dialog:
+
+   **[https://raw.githubusercontent.com/galmukhaizim/2000sInternet/HEAD/userscript/dist/retro.user.js](https://raw.githubusercontent.com/galmukhaizim/2000sInternet/HEAD/userscript/dist/retro.user.js)**
+
+3. Visit any site. The retro-web window appears bottom right and the first
+   design starts automatically. The designer model (about 1 GB, downloaded once
+   into your browser's cache from Hugging Face) runs inside a hidden frame
+   served from this repo's GitHub Pages site, so nothing else needs to run.
+
+The script auto-updates from this repo: every push rebuilds
+`userscript/dist/retro.user.js` and Tampermonkey picks up new `@version`s.
+GitHub Pages is published by `.github/workflows/pages.yml`; if the panel says
+`model host unreachable`, enable Pages once in the repo settings
+(**Settings → Pages → Source: GitHub Actions**) and re-run the workflow.
+
+Optional: a Claude API key lets the model request icons the library lacks (see
+below). Everything else works without it.
+
 ## Requirements
 
-- Chrome / Edge / Brave (WebGPU) with [Tampermonkey](https://www.tampermonkey.net/).
+- Chrome / Edge / Brave with WebGPU (any recent version on a machine with a GPU).
   Firefox works for everything except the in-browser model unless WebGPU is enabled.
-- Node 20+ to build.
-- Python 3.10+ only for the training pipeline (`training/`).
-- A Claude API key (optional — only for generating icons the library lacks).
+- For development: Node 20+. For the training pipeline: Python 3.10+.
 
-## Setup
+## Development setup
 
 ```bash
 npm install
@@ -43,10 +64,10 @@ npm run build          # -> userscript/dist/retro.user.js, retro.lib.js, host/
 npm run host           # serves the model host page on http://localhost:4173/
 ```
 
-### Install the userscript in Tampermonkey (private repo → file:// workflow)
+Point the panel's **Advanced → Host URL** at `http://localhost:4173/` to use the
+local host page instead of GitHub Pages while developing.
 
-Tampermonkey cannot auto-update from a private GitHub repo, so the dev stub
-`@require`s the local build straight from disk.
+### Dev stub (load the local build on every page view)
 
 1. In `chrome://extensions`, open Tampermonkey → **Details** → enable
    **Allow access to file URLs**.
@@ -56,32 +77,21 @@ Tampermonkey cannot auto-update from a private GitHub repo, so the dev stub
 3. `npm run build` writes `userscript/dist/retro.dev.user.js` with the correct
    absolute `file://` path for this checkout. Open that file in the browser
    (`file:///…/userscript/dist/retro.dev.user.js`) and Tampermonkey offers to
-   install it. (Or edit the path in `userscript/dev/retro.dev.user.js` by hand.)
+   install it. Disable the published retro-web script while the dev stub is on.
 4. Keep `npm run watch` running while developing; reload the page to pick up changes.
-
-To run the in-browser model you also need the **model host** running:
-`npm run host` (http://localhost:4173/). The userscript embeds it as a hidden
-iframe; the model weights (~1 GB, downloaded once from Hugging Face) are cached by
-that origin and shared across every site. The host URL is configurable in the
-panel's *Advanced* section, so you can also host `userscript/dist/host/` on any
-static HTTPS origin (e.g. a Hugging Face static Space) and point the script there.
 
 ### Working from GitHub Codespaces or another remote dev box
 
-Tampermonkey runs in your local browser, so a `file://` stub cannot reach a
-remote checkout. Let the dev server hand everything to the browser instead:
+A `file://` stub cannot reach a remote checkout. Let the dev server hand the
+build to the browser instead:
 
 1. In the Codespace: `npm install && npm run build && npm run host`.
-2. In the **Ports** panel, set port **4173** to **Public** (the bundle contains
-   no secrets; your API key only ever lives in Tampermonkey). Copy its URL, e.g.
+2. In the **Ports** panel, set port **4173** to **Public** and copy its URL, e.g.
    `https://<codespace>-4173.app.github.dev`.
 3. Open `https://<codespace>-4173.app.github.dev/retro.remote.user.js` in your
-   browser: Tampermonkey offers to install a stub that `@require`s the bundle
-   from that URL. Set Tampermonkey → Settings → Externals → *Update interval* to
-   **Always** so rebuilds are picked up on reload.
+   browser and install the stub it offers (Externals *Update interval*: Always).
 4. In the panel's **Advanced** section set **Host URL** to
-   `https://<codespace>-4173.app.github.dev/` and save. The model host page is
-   served from the same port; the model weights download in your browser.
+   `https://<codespace>-4173.app.github.dev/` and save.
 
 ### Claude API key (optional)
 
@@ -117,8 +127,7 @@ A small Win98-style window in the bottom-right corner:
 
 ### Phase 1 — shell, build, panel
 
-1. `npm install && npm run build`, install `userscript/dist/retro.dev.user.js`
-   as described above.
+1. Install from the one-click link above (or build and install the dev stub).
 2. Visit any site: the retro-web window appears bottom-right with status
    `v0.1.0 ready` (or a note such as `no WebGPU`). Drag it by the title bar,
    minimise it, toggle *Enabled on this site*, open *Advanced*.
@@ -144,9 +153,9 @@ A small Win98-style window in the bottom-right corner:
 
 ### Phase 3 — in-browser designer model
 
-1. `npm run build` (also builds `userscript/dist/host/host.js`, ~6 MB, not
-   committed) and `npm run host`. Open http://localhost:4173/ once: it should
-   say *open as a standalone page*.
+1. With the published script the host page comes from GitHub Pages. For local
+   development `npm run build` (also builds `userscript/dist/host/host.js`, ~6 MB,
+   not committed) and `npm run host`, then set Host URL to http://localhost:4173/.
 2. Visit a site with the dev stub installed. The panel shows
    `summarizing page…`, then `downloading model 1/N (first time only)` with a
    progress bar — the default `Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC` is about

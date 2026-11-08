@@ -80,6 +80,7 @@ function writeDevStub() {
   const abs = path.join(dist, 'retro.user.js');
   const stub = header
     .replace('@name         retro-web', '@name         retro-web (dev)')
+    .replace(/\/\/ @(downloadURL|updateURL)[^\n]*\n/g, '')
     .replace(/\/\/ ==\/UserScript==/, `// @require      ${pathToFileURL(abs).href}\n// ==/UserScript==`);
   fs.writeFileSync(path.join(dist, 'retro.dev.user.js'), stub + '\n\n// Loaded from dist/retro.user.js via @require above.\n');
 }

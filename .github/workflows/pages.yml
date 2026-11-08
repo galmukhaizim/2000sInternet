@@ -1,0 +1,55 @@
+# Builds the userscript + model host on every push and publishes userscript/dist
+# to GitHub Pages, so Tampermonkey can install/update from the repo and the
+# model host runs at https://galmukhaizim.github.io/2000sInternet/host/ without
+# anyone running a local server.
+name: build-and-publish
+on:
+  push:
+    branches: ['**']
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - name: Prepare site
+        run: |
+          rm -f userscript/dist/retro.dev.user.js
+          cp -r eval/mock-host userscript/dist/mock-host
+          cat > userscript/dist/index.html <<'HTML'
+          <!doctype html><meta charset="utf-8"><title>retro-web</title>
+          <body style="font:14px Tahoma,Verdana,sans-serif;background:#c0c0c0;margin:24px">
+          <h2>retro-web</h2>
+          <p><a href="retro.user.js">Install the userscript</a> (Tampermonkey opens an install dialog) ·
+          <a href="host/">model host page</a> · <a href="https://github.com/galmukhaizim/2000sInternet">source</a></p>
+          HTML
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: userscript/dist
+  deploy:
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

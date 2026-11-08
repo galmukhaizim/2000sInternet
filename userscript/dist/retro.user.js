@@ -1,10 +1,15 @@
 // ==UserScript==
 // @name         retro-web
 // @namespace    https://github.com/galmukhaizim/2000sInternet
-// @version      0.1.0
+// @version      0.2.0
 // @description  Redesigns any website in a 2000s internet aesthetic using a small language model running in your browser
 // @author       galmukhaizim
+// @homepageURL  https://github.com/galmukhaizim/2000sInternet
+// @supportURL   https://github.com/galmukhaizim/2000sInternet/issues
+// @downloadURL  https://raw.githubusercontent.com/galmukhaizim/2000sInternet/HEAD/userscript/dist/retro.user.js
+// @updateURL    https://raw.githubusercontent.com/galmukhaizim/2000sInternet/HEAD/userscript/dist/retro.user.js
 // @match        *://*/*
+// @exclude      https://galmukhaizim.github.io/2000sInternet/*
 // @exclude      http://localhost:4173/*
 // @exclude      http://127.0.0.1:4173/*
 // @noframes
@@ -21,17 +26,20 @@
 // @connect      cdn-lfs.huggingface.co
 // @connect      cdn-lfs-us-1.huggingface.co
 // @connect      raw.githubusercontent.com
+// @connect      galmukhaizim.github.io
 // @connect      localhost
 // @connect      127.0.0.1
 // ==/UserScript==
 
 (() => {
   // userscript/src/config.js
-  var VERSION = "0.1.0";
+  var VERSION = "0.2.0";
   var CACHE_VERSION = 1;
   var DEFAULTS = {
     // --- model host (fixed origin iframe that runs WebLLM) ---
-    hostUrl: "http://localhost:4173/",
+    // Published by .github/workflows/pages.yml. For local development run
+    // `npm run host` and set http://localhost:4173/ in the panel's Advanced section.
+    hostUrl: "https://galmukhaizim.github.io/2000sInternet/host/",
     // Any id from WebLLM's prebuilt list (0.2.87). ~1.6 GB VRAM, code-tuned.
     modelId: "Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC",
     // Later: your fine-tuned model on Hugging Face, e.g.
@@ -2336,7 +2344,7 @@
           this.dispose();
           this.ready = null;
           reject(
-            blocked ? new ModelUnavailableError("host-blocked", `this site's Content Security Policy blocks the model host frame (${this.hostOrigin})`) : new ModelUnavailableError("host-unreachable", `model host not reachable at ${this.hostUrl} \u2014 run \`npm run host\` or set the host URL in Advanced`)
+            blocked ? new ModelUnavailableError("host-blocked", `this site's Content Security Policy blocks the model host frame (${this.hostOrigin})`) : new ModelUnavailableError("host-unreachable", `model host not reachable at ${this.hostUrl} (GitHub Pages not deployed yet, or for local dev run \`npm run host\` and set the Host URL in Advanced)`)
           );
         }, this.handshakeTimeoutMs);
         frame.src = url.href;
@@ -2418,7 +2426,7 @@
         case "host-blocked":
           return "blocked by this site's CSP (model host frame)";
         case "host-unreachable":
-          return "model host offline \u2014 run `npm run host`";
+          return "model host unreachable (check Host URL in Advanced; local dev: `npm run host`)";
         case "webgpu":
           return "WebGPU unavailable in this browser";
         case "network":

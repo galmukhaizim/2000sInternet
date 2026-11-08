@@ -29,6 +29,7 @@ function remoteStub(base) {
   return (
     header
       .replace('@name         retro-web', '@name         retro-web (remote dev)')
+      .replace(/\/\/ @(downloadURL|updateURL)[^\n]*\n/g, '')
       .replace(/\/\/ ==\/UserScript==/, `// @require      ${base}/retro.user.js?t=${Date.now()}\n// ==/UserScript==`) +
     `\n\n// Loaded from ${base}/retro.user.js via @require above. Set Tampermonkey's Externals update\n// interval to "Always" so rebuilds are picked up; set the panel's Host URL to ${base}/\n`
   );

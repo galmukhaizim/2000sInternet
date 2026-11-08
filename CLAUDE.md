@@ -61,8 +61,9 @@ training/                     Python pipeline (scrape, teacher dataset, repair d
 ## Architecture decisions (keep consistent)
 
 1. **Model host iframe.** WebLLM runs inside a hidden `<iframe>` whose `src` is a
-   fixed origin (`settings.hostUrl`, default `http://localhost:4173/`), NOT in the
-   page context. Reason: the Cache API / IndexedDB that WebLLM uses for weights are
+   fixed origin (`settings.hostUrl`, default the GitHub Pages site
+   `https://galmukhaizim.github.io/2000sInternet/host/`, or `http://localhost:4173/`
+   for local development), NOT in the page context. Reason: the Cache API / IndexedDB that WebLLM uses for weights are
    origin-scoped, so running in-page would re-download ~1 GB per site; a fixed
    origin downloads once. It also sidesteps page CSP rules on `connect-src` and WASM.
    The userscript and host talk over `postMessage` (protocol in `model/engine.js`,
@@ -124,6 +125,21 @@ training/                     Python pipeline (scrape, teacher dataset, repair d
 - `.gitignore` excludes `.env*`, model weights, datasets, checkpoints, `node_modules`,
   eval output.
 
+## Publishing (the repo IS the userscript)
+
+- The repo is **public**. Users install from the raw URL of the committed bundle:
+  `https://raw.githubusercontent.com/galmukhaizim/2000sInternet/HEAD/userscript/dist/retro.user.js`
+  (`HEAD` = default branch, so renaming the branch is safe). The header's
+  `@downloadURL`/`@updateURL` point there; Tampermonkey updates when `@version`
+  in `userscript/header.txt` increases. **Bump `@version` (and `VERSION` in
+  `config.js`, `host.js`, `package.json`) whenever a change should reach users.**
+- `.github/workflows/pages.yml` builds on every push and deploys `userscript/dist`
+  to GitHub Pages from the default branch: the model host lives at
+  `https://galmukhaizim.github.io/2000sInternet/host/` and a second install link at
+  `https://galmukhaizim.github.io/2000sInternet/retro.user.js`.
+- Always commit a freshly built `dist/retro.user.js` with source changes (the raw
+  URL serves the committed file, not a CI build).
+
 ## Userscript conventions
 
 - Metadata header lives in `userscript/header.txt`; `build.mjs` prepends it.
@@ -131,9 +147,10 @@ training/                     Python pipeline (scrape, teacher dataset, repair d
   GM_getValue GM_deleteValue GM_listValues GM_registerMenuCommand GM_addStyle`,
   `@connect api.anthropic.com` + model-weight hosts (`huggingface.co`,
   `cdn-lfs.huggingface.co`, `raw.githubusercontent.com`) + `localhost`.
-- The dev stub (`userscript/dev/retro.dev.user.js`) carries the same header plus
-  `@require file:///…/userscript/dist/retro.user.js`. Tampermonkey needs
-  "Allow access to file URLs" for this.
+- The dev stub (`userscript/dev/retro.dev.user.js`) carries the same header
+  (minus update URLs) plus `@require file:///…/userscript/dist/retro.user.js`.
+  Tampermonkey needs "Allow access to file URLs" for this. `serve.mjs` also
+  serves `/retro.remote.user.js` for remote dev boxes (Codespaces).
 - No external runtime dependencies in the userscript bundle (web-llm is bundled
   only into the host page). Keep `dist/retro.user.js` dependency-free.
 - `dist/retro.user.js` and `dist/retro.lib.js` are committed so the file:// dev

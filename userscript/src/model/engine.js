@@ -132,7 +132,7 @@ export class ModelClient {
         reject(
           blocked
             ? new ModelUnavailableError('host-blocked', `this site's Content Security Policy blocks the model host frame (${this.hostOrigin})`)
-            : new ModelUnavailableError('host-unreachable', `model host not reachable at ${this.hostUrl} — run \`npm run host\` or set the host URL in Advanced`),
+            : new ModelUnavailableError('host-unreachable', `model host not reachable at ${this.hostUrl} (GitHub Pages not deployed yet, or for local dev run \`npm run host\` and set the Host URL in Advanced)`),
         );
       }, this.handshakeTimeoutMs);
       frame.src = url.href;
@@ -220,7 +220,7 @@ export function describeModelError(err) {
       case 'host-blocked':
         return 'blocked by this site\'s CSP (model host frame)';
       case 'host-unreachable':
-        return 'model host offline — run `npm run host`';
+        return 'model host unreachable (check Host URL in Advanced; local dev: `npm run host`)';
       case 'webgpu':
         return 'WebGPU unavailable in this browser';
       case 'network':
