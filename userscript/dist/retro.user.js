@@ -3809,6 +3809,7 @@ Size: ${size === 32 ? 32 : 16}` }]
   }
   function main() {
     if (window.top !== window) return;
+    if (document.querySelector('meta[name="retro-web-host"]')) return;
     if (document.getElementById(PANEL_ID)) return;
     const hostname = location.hostname;
     let settings = getSettings();

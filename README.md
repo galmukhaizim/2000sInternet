@@ -66,6 +66,23 @@ that origin and shared across every site. The host URL is configurable in the
 panel's *Advanced* section, so you can also host `userscript/dist/host/` on any
 static HTTPS origin (e.g. a Hugging Face static Space) and point the script there.
 
+### Working from GitHub Codespaces or another remote dev box
+
+Tampermonkey runs in your local browser, so a `file://` stub cannot reach a
+remote checkout. Let the dev server hand everything to the browser instead:
+
+1. In the Codespace: `npm install && npm run build && npm run host`.
+2. In the **Ports** panel, set port **4173** to **Public** (the bundle contains
+   no secrets; your API key only ever lives in Tampermonkey). Copy its URL, e.g.
+   `https://<codespace>-4173.app.github.dev`.
+3. Open `https://<codespace>-4173.app.github.dev/retro.remote.user.js` in your
+   browser: Tampermonkey offers to install a stub that `@require`s the bundle
+   from that URL. Set Tampermonkey → Settings → Externals → *Update interval* to
+   **Always** so rebuilds are picked up on reload.
+4. In the panel's **Advanced** section set **Host URL** to
+   `https://<codespace>-4173.app.github.dev/` and save. The model host page is
+   served from the same port; the model weights download in your browser.
+
 ### Claude API key (optional)
 
 Open the panel → **Set key**, or use the Tampermonkey menu command

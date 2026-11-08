@@ -23,6 +23,7 @@ function setState(state, detail = {}) {
 
 function main() {
   if (window.top !== window) return; // never inside frames (incl. our own host)
+  if (document.querySelector('meta[name="retro-web-host"]')) return; // never on the model host page itself
   if (document.getElementById(PANEL_ID)) return; // already running
   const hostname = location.hostname;
   let settings = storage.getSettings();
