@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         retro-web
 // @namespace    https://github.com/galmukhaizim/2000sInternet
-// @version      0.2.0
+// @version      0.3.0
 // @description  Redesigns any website in a 2000s internet aesthetic using a small language model running in your browser
 // @author       galmukhaizim
 // @homepageURL  https://github.com/galmukhaizim/2000sInternet

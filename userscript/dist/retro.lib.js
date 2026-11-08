@@ -71,7 +71,7 @@ var RetroWebLib = (() => {
   });
 
   // userscript/src/config.js
-  var VERSION = "0.2.0";
+  var VERSION = "0.3.0";
   var STORAGE_KEYS = {
     apiKey: "apiKey",
     settings: "settings",
@@ -960,7 +960,8 @@ var RetroWebLib = (() => {
       }
       if (e.id && isStableToken(e.id) && e.children.length >= 2 && idList.length < 40) idList.push({ id: e.id, tag: e.localName, children: e.children.length });
     }
-    const classes = [...classFreq.entries()].sort((a, b) => b[1].count - a[1].count).slice(0, 30).map(([name, v]) => ({ name, count: v.count, tag: [...v.tags.entries()].sort((a, b) => b[1] - a[1])[0][0] }));
+    const scopingLimit = Math.max(40, Math.round(visible.length * 0.1));
+    const classes = [...classFreq.entries()].filter(([, v]) => v.count <= scopingLimit).sort((a, b) => b[1].count - a[1].count).slice(0, 30).map(([name, v]) => ({ name, count: v.count, tag: [...v.tags.entries()].sort((a, b) => b[1] - a[1])[0][0] }));
     const ids = idList.sort((a, b) => b.children - a.children).slice(0, 15);
     const bodyStyle = M.style(body);
     const htmlStyle = M.style(doc.documentElement);
@@ -1122,6 +1123,18 @@ var RetroWebLib = (() => {
   var INTERACTIVE = /* @__PURE__ */ new Set(["a", "button", "input", "select", "textarea", "label", "summary"]);
   var LANDMARK_TAGS = /* @__PURE__ */ new Set(["html", "body", "main", "nav", "header", "footer", "article", "form"]);
   var DEFAULT_PROTECT = /retro-web/i;
+  var LAYOUT_PROPS = /^(display|position|top|right|bottom|left|inset(-.*)?|float|clear|(min-|max-)?(width|height|inline-size|block-size)|flex(-.*)?|grid(-.*)?|gap|row-gap|column-gap|align-.*|justify-.*|place-.*|order|overflow(-.*)?|transform(-.*)?|translate|rotate|scale|z-index|box-sizing|columns?|column-(count|width|span|fill)|white-space|visibility|object-fit|object-position|aspect-ratio|text-indent|writing-mode|direction|contain|container(-.*)?|vertical-align|table-layout|resize|appearance|line-clamp|-webkit-line-clamp)$/;
+  var SPACING_PROPS = /^(margin(-.*)?|padding(-.*)?)$/;
+  var MEDIA_TAGS = /* @__PURE__ */ new Set(["video", "audio", "canvas", "iframe", "embed", "object", "picture", "source", "track"]);
+  var MEDIA_SAFE = /^(border(-.*)?|outline(-.*)?|box-shadow|filter|opacity|cursor|background(-.*)?)$/;
+  var MEDIA_CONTAINER_RISKY = /^(display|position|(min-|max-)?(width|height|inline-size|block-size)|overflow(-.*)?|transform(-.*)?|flex(-.*)?|grid(-.*)?|aspect-ratio|visibility|float|columns?|contain)$/;
+  var GENTLE_CLAMPS = {
+    padding: { px: [0, 24], em: [0, 1.5], rem: [0, 1.5], "%": [0, 5], vw: [0, 2], vh: [0, 2] },
+    margin: { px: [-8, 24], em: [-0.5, 1.5], rem: [-0.5, 1.5], "%": [-2, 5], vw: [-2, 2], vh: [-2, 2] },
+    "font-size": { px: [11, 20], pt: [8, 15], em: [0.8, 1.3], rem: [0.8, 1.3], "%": [80, 130], vw: [0.8, 1.5], vh: [0.8, 1.5] },
+    "line-height": { "": [1, 1.8], px: [12, 32], em: [1, 1.8], rem: [1, 1.8], "%": [100, 180] },
+    border: { px: [0, 4], em: [0, 0.3], rem: [0, 0.3] }
+  };
   var CLAMPS = [
     [/^font-size$/, { px: [8, 96], pt: [6, 72], em: [0.5, 6], rem: [0.5, 6], "%": [50, 600], vw: [0.5, 8], vh: [0.5, 8] }],
     [/^font$/, { px: [8, 96], pt: [6, 72], em: [0.5, 6], rem: [0.5, 6], "": [0.9, 3] }],
@@ -1374,9 +1387,11 @@ var RetroWebLib = (() => {
     };
   }
   function classifyTargets(doc, probes, limit = 60) {
-    const info = { count: 0, landmark: false, interactive: false, textLength: 0, protected: false };
+    const info = { count: 0, landmark: false, interactive: false, textLength: 0, protected: false, media: false, mediaParent: false, flexGrid: false, root: false };
     if (!doc) return info;
+    const win = doc.defaultView;
     const seen = /* @__PURE__ */ new Set();
+    let sampled = 0;
     for (const probe of probes) {
       let list;
       try {
@@ -1384,26 +1399,39 @@ var RetroWebLib = (() => {
       } catch {
         continue;
       }
+      info.count += list.length;
       for (const el of list) {
         if (seen.has(el)) continue;
         seen.add(el);
-        info.count++;
+        if (++sampled > limit) break;
         if (LANDMARK_TAGS.has(el.localName) || el.getAttribute("role") === "main") info.landmark = true;
+        if (el.localName === "html" || el.localName === "body") info.root = true;
         if (INTERACTIVE.has(el.localName) || el.getAttribute("role") === "button") info.interactive = true;
         if (el.querySelector && el.querySelector("a, button, input, select, textarea")) info.interactive = true;
         if (el.localName === "retro-web-panel") info.protected = true;
+        if (MEDIA_TAGS.has(el.localName)) info.media = true;
+        else if (el.children && [...el.children].some((c) => MEDIA_TAGS.has(c.localName))) info.mediaParent = true;
+        if (!info.flexGrid && win && sampled <= 40) {
+          try {
+            const d = win.getComputedStyle(el).display || "";
+            if (/flex|grid|table/.test(d) && !/inline-block/.test(d)) info.flexGrid = true;
+          } catch {
+          }
+        }
         info.textLength += (el.textContent || "").trim().length;
-        if (seen.size >= limit) return info;
       }
     }
+    if (sampled <= limit) info.count = seen.size;
     return info;
   }
-  function clampNumbers(prop, value) {
-    let spec = null;
-    for (const [re, s2] of CLAMPS) {
-      if (re.test(prop)) {
-        spec = s2;
-        break;
+  function clampNumbers(prop, value, specOverride = null) {
+    let spec = specOverride;
+    if (!spec) {
+      for (const [re, s2] of CLAMPS) {
+        if (re.test(prop)) {
+          spec = s2;
+          break;
+        }
       }
     }
     if (!spec) return value;
@@ -1524,6 +1552,31 @@ var RetroWebLib = (() => {
         if (t.landmark && /hidden|clip/i.test(value) && /html|body/.test(ctx.selector)) return drop("overflow-hidden-on-root");
       }
     }
+    if (!ctx.keyframes && !ctx.fontFace) {
+      const isLayout = LAYOUT_PROPS.test(prop);
+      const isSpacing = SPACING_PROPS.test(prop);
+      const t = isLayout || isSpacing || /^(font-size|line-height|border(-(top|right|bottom|left))?(-width)?|content)$/.test(prop) ? ctx.targets() : null;
+      if (t) {
+        if (t.media && !MEDIA_SAFE.test(prop)) return drop("media-element");
+        if (prop === "content" && !/::?(before|after|marker)/.test(ctx.selector)) return drop("content-outside-pseudo");
+        if (isLayout) {
+          if (t.count > ctx.maxLayoutMatches) return drop("layout-too-broad");
+          if (t.mediaParent && MEDIA_CONTAINER_RISKY.test(prop)) return drop("media-container");
+          if (prop === "display") {
+            const v = value.trim().toLowerCase();
+            if (t.root && v !== "block") return drop("display-on-root");
+            if (t.flexGrid && !/^(flex|inline-flex|grid|inline-grid|contents|table.*)$/.test(v)) return drop("display-breaks-layout");
+          }
+        } else if (isSpacing) {
+          if (t.count > ctx.maxSpacingMatches) return drop("spacing-too-broad");
+          if (t.count > ctx.maxLayoutMatches) value = clampNumbers(prop, value, GENTLE_CLAMPS[prop.startsWith("margin") ? "margin" : "padding"]);
+        } else if (t.count > ctx.maxSpacingMatches) {
+          if (prop === "font-size") value = clampNumbers(prop, value, GENTLE_CLAMPS["font-size"]);
+          else if (prop === "line-height") value = clampNumbers(prop, value, GENTLE_CLAMPS["line-height"]);
+          else if (prop.startsWith("border")) value = clampNumbers(prop, value, GENTLE_CLAMPS.border);
+        }
+      }
+    }
     value = clampNumbers(prop, value);
     if (prop === "z-index" && /^-?\d+$/.test(value) && parseInt(value, 10) > 2147483e3) value = "2147483000";
     return { prop, value, important: ctx.forceImportant && !ctx.keyframes && !ctx.fontFace ? true : d.important };
@@ -1532,7 +1585,7 @@ var RetroWebLib = (() => {
     return decls.map((d) => `${d.prop}: ${d.value}${d.important ? " !important" : ""};`).join(" ");
   }
   function validateCss(text, options = {}) {
-    const { doc = null, mode = "design", forceImportant = true, maxRules = 400, maxDecls = 60, allowUnmatched = false } = options;
+    const { doc = null, mode = "design", forceImportant = true, maxRules = 400, maxDecls = 60, allowUnmatched = false, maxLayoutMatches = 40, maxSpacingMatches = 150 } = options;
     const protect = options.protect || DEFAULT_PROTECT;
     const parsed = parseCss(String(text || "").replace(/```[a-z]*/gi, ""));
     const out = { css: "", kept: 0, dropped: [], warnings: [], iconVars: /* @__PURE__ */ new Set(), varsUsed: /* @__PURE__ */ new Set(), errors: parsed.errors, mode };
@@ -1619,7 +1672,9 @@ var RetroWebLib = (() => {
           keyframes: inKeyframes,
           fontFace: false,
           forceImportant,
-          targets: () => targetsCache || (targetsCache = classifyTargets(doc, probes.length ? probes : selectorParts.map(probeSelector)))
+          maxLayoutMatches,
+          maxSpacingMatches,
+          targets: () => targetsCache || (targetsCache = classifyTargets(doc, probes.length ? probes : selectorParts.map(probeSelector), 400))
         };
         if (node.declarations.length > maxDecls) out.warnings.push(`truncated declarations for ${selector}`);
         const decls = node.declarations.slice(0, maxDecls).map((d) => validateDeclaration(d, ctx, out)).filter(Boolean);
@@ -2384,6 +2439,7 @@ Rules:
 - Never nest rules. No @import. No external url(). Only library assets via var(--icon-NAME), var(--bg-NAME), var(--grad-NAME), var(--font-NAME), var(--cursor-NAME) plus plain colors.
 - Keep text readable: body text 12px or larger, strong contrast between text and background. Never hide content.
 - Restyle everything visible: body background, fonts, headings, links, nav, header, main content, sidebar, footer, buttons, inputs, images, tables, forms.
+- Keep the page working. On broad selectors (bare tags like div, span, a, li, img, or classes used everywhere) change only colors, backgrounds, borders, fonts and text decoration. Put layout changes (padding, margin, display, width) only on the specific landmark selectors, buttons, inputs and nav links from the summary. Never move or resize video players, iframes or their containers; a border or shadow is fine.
 - Icons: decorate nav links and buttons with 16px icons: background-image: var(--icon-NAME); background-repeat: no-repeat; background-position: 4px center; padding-left: 24px;
 - If the library lacks an icon you need, add a line: /* icon-request: name | short description */ and then use var(--icon-name).
 - To attach a library component class write a line: /* apply-class: selector | class-name */

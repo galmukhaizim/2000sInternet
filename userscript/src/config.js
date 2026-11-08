@@ -1,7 +1,7 @@
 // Defaults for everything configurable. User overrides live in GM storage under
 // the `settings` key (see storage.js) and are merged over these at runtime.
 
-export const VERSION = '0.2.0';
+export const VERSION = '0.3.0';
 
 // Bump when the cached site record format or the library changes incompatibly.
 export const CACHE_VERSION = 1;
@@ -33,6 +33,7 @@ export const DEFAULTS = {
 
   // --- behaviour ---
   autoDesign: true,        // design new sites automatically on first visit
+  popupFallback: true,     // when a site's CSP blocks the hidden frame, run the model in a popup window
   style: 'random',         // sub-style id from training/styles.json or 'random'
   maxRepairRounds: 3,
   settleDelayMs: 600,      // wait for layout/fonts before inspecting

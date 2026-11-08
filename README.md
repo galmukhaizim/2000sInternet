@@ -93,6 +93,38 @@ build to the browser instead:
 4. In the panel's **Advanced** section set **Host URL** to
    `https://<codespace>-4173.app.github.dev/` and save.
 
+### What to expect on complex web apps
+
+The validator keeps designs from breaking pages: broad selectors (bare tags,
+classes used everywhere) may only change colors, backgrounds, borders and
+fonts; layout properties (display, position, size, flex/grid, overflow) are
+allowed only on selectors matching a few dozen elements; video players,
+iframes and their containers are never moved or resized; flex/grid containers
+cannot be turned into blocks. Even so, app-like sites (YouTube, Gmail, web
+apps with thousands of nested components) get a cosmetic reskin at best from a
+1.5B model, while blogs, docs, shops, forums and portals get full redesigns. If
+a site still looks wrong, **Original** restores it and **Enabled on this site**
+turns retro-web off there. Better designs come from a fine-tuned model
+(`training/`).
+
+### Sites with a strict Content Security Policy
+
+Some sites (GitHub, Google, many banks) send a CSP that forbids embedding
+frames from other origins, so the hidden model frame cannot load there. The
+panel then says *this site's security policy blocks the hidden model frame* and
+asks you to press **Redesign**: that click lets the script open the model host
+as a small popup window instead (CSP does not apply to popups), which closes by
+itself when the design is done. Allow popups for the site if the browser blocks
+it. The block is remembered per site, so later visits skip straight to the
+popup prompt; cached designs still apply instantly without any model.
+
+If you would rather have everything automatic on every site, Tampermonkey can
+strip CSP headers for you: Tampermonkey → **Settings** (Config mode: Advanced)
+→ **Security** → *Modify existing content security policy (CSP) headers* →
+**Remove entirely**. This weakens a real protection against cross-site scripting
+on every site you visit, so it is a trade-off to make knowingly; the popup
+fallback does not need it.
+
 ### Claude API key (optional)
 
 Open the panel → **Set key**, or use the Tampermonkey menu command

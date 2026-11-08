@@ -22,6 +22,21 @@ const INTERACTIVE = new Set(['a', 'button', 'input', 'select', 'textarea', 'labe
 const LANDMARK_TAGS = new Set(['html', 'body', 'main', 'nav', 'header', 'footer', 'article', 'form']);
 const DEFAULT_PROTECT = /retro-web/i;
 
+// Layout-affecting properties: allowed only on specific selectors (few matches),
+// never on media elements. Broad selectors may only change cosmetics.
+const LAYOUT_PROPS = /^(display|position|top|right|bottom|left|inset(-.*)?|float|clear|(min-|max-)?(width|height|inline-size|block-size)|flex(-.*)?|grid(-.*)?|gap|row-gap|column-gap|align-.*|justify-.*|place-.*|order|overflow(-.*)?|transform(-.*)?|translate|rotate|scale|z-index|box-sizing|columns?|column-(count|width|span|fill)|white-space|visibility|object-fit|object-position|aspect-ratio|text-indent|writing-mode|direction|contain|container(-.*)?|vertical-align|table-layout|resize|appearance|line-clamp|-webkit-line-clamp)$/;
+const SPACING_PROPS = /^(margin(-.*)?|padding(-.*)?)$/;
+const MEDIA_TAGS = new Set(['video', 'audio', 'canvas', 'iframe', 'embed', 'object', 'picture', 'source', 'track']);
+const MEDIA_SAFE = /^(border(-.*)?|outline(-.*)?|box-shadow|filter|opacity|cursor|background(-.*)?)$/;
+const MEDIA_CONTAINER_RISKY = /^(display|position|(min-|max-)?(width|height|inline-size|block-size)|overflow(-.*)?|transform(-.*)?|flex(-.*)?|grid(-.*)?|aspect-ratio|visibility|float|columns?|contain)$/;
+const GENTLE_CLAMPS = {
+  padding: { px: [0, 24], em: [0, 1.5], rem: [0, 1.5], '%': [0, 5], vw: [0, 2], vh: [0, 2] },
+  margin: { px: [-8, 24], em: [-0.5, 1.5], rem: [-0.5, 1.5], '%': [-2, 5], vw: [-2, 2], vh: [-2, 2] },
+  'font-size': { px: [11, 20], pt: [8, 15], em: [0.8, 1.3], rem: [0.8, 1.3], '%': [80, 130], vw: [0.8, 1.5], vh: [0.8, 1.5] },
+  'line-height': { '': [1, 1.8], px: [12, 32], em: [1, 1.8], rem: [1, 1.8], '%': [100, 180] },
+  border: { px: [0, 4], em: [0, 0.3], rem: [0, 0.3] },
+};
+
 // unit -> [min, max] per property family
 const CLAMPS = [
   [/^font-size$/, { px: [8, 96], pt: [6, 72], em: [0.5, 6], rem: [0.5, 6], '%': [50, 600], vw: [0.5, 8], vh: [0.5, 8] }],
@@ -305,9 +320,11 @@ function createMatcher(doc, protect) {
 }
 
 function classifyTargets(doc, probes, limit = 60) {
-  const info = { count: 0, landmark: false, interactive: false, textLength: 0, protected: false };
+  const info = { count: 0, landmark: false, interactive: false, textLength: 0, protected: false, media: false, mediaParent: false, flexGrid: false, root: false };
   if (!doc) return info;
+  const win = doc.defaultView;
   const seen = new Set();
+  let sampled = 0;
   for (const probe of probes) {
     let list;
     try {
@@ -315,29 +332,44 @@ function classifyTargets(doc, probes, limit = 60) {
     } catch {
       continue;
     }
+    info.count += list.length;
     for (const el of list) {
       if (seen.has(el)) continue;
       seen.add(el);
-      info.count++;
+      if (++sampled > limit) break;
       if (LANDMARK_TAGS.has(el.localName) || el.getAttribute('role') === 'main') info.landmark = true;
+      if (el.localName === 'html' || el.localName === 'body') info.root = true;
       if (INTERACTIVE.has(el.localName) || el.getAttribute('role') === 'button') info.interactive = true;
       if (el.querySelector && el.querySelector('a, button, input, select, textarea')) info.interactive = true;
       if (el.localName === 'retro-web-panel') info.protected = true;
+      if (MEDIA_TAGS.has(el.localName)) info.media = true;
+      else if (el.children && [...el.children].some((c) => MEDIA_TAGS.has(c.localName))) info.mediaParent = true;
+      if (!info.flexGrid && win && sampled <= 40) {
+        try {
+          const d = win.getComputedStyle(el).display || '';
+          if (/flex|grid|table/.test(d) && !/inline-block/.test(d)) info.flexGrid = true;
+        } catch {
+          /* ignore */
+        }
+      }
       info.textLength += (el.textContent || '').trim().length;
-      if (seen.size >= limit) return info;
     }
   }
+  // de-duplicate count across probes when sampling covered everything
+  if (sampled <= limit) info.count = seen.size;
   return info;
 }
 
 // ----------------------------------------------------------- declarations ----
 
-function clampNumbers(prop, value) {
-  let spec = null;
-  for (const [re, s] of CLAMPS) {
-    if (re.test(prop)) {
-      spec = s;
-      break;
+function clampNumbers(prop, value, specOverride = null) {
+  let spec = specOverride;
+  if (!spec) {
+    for (const [re, s] of CLAMPS) {
+      if (re.test(prop)) {
+        spec = s;
+        break;
+      }
     }
   }
   if (!spec) return value;
@@ -465,6 +497,32 @@ function validateDeclaration(d, ctx, out) {
       if (t.landmark && /hidden|clip/i.test(value) && /html|body/.test(ctx.selector)) return drop('overflow-hidden-on-root');
     }
   }
+  // ---- layout guard rails: keep complex pages working ----
+  if (!ctx.keyframes && !ctx.fontFace) {
+    const isLayout = LAYOUT_PROPS.test(prop);
+    const isSpacing = SPACING_PROPS.test(prop);
+    const t = isLayout || isSpacing || /^(font-size|line-height|border(-(top|right|bottom|left))?(-width)?|content)$/.test(prop) ? ctx.targets() : null;
+    if (t) {
+      if (t.media && !MEDIA_SAFE.test(prop)) return drop('media-element');
+      if (prop === 'content' && !/::?(before|after|marker)/.test(ctx.selector)) return drop('content-outside-pseudo');
+      if (isLayout) {
+        if (t.count > ctx.maxLayoutMatches) return drop('layout-too-broad');
+        if (t.mediaParent && MEDIA_CONTAINER_RISKY.test(prop)) return drop('media-container');
+        if (prop === 'display') {
+          const v = value.trim().toLowerCase();
+          if (t.root && v !== 'block') return drop('display-on-root');
+          if (t.flexGrid && !/^(flex|inline-flex|grid|inline-grid|contents|table.*)$/.test(v)) return drop('display-breaks-layout');
+        }
+      } else if (isSpacing) {
+        if (t.count > ctx.maxSpacingMatches) return drop('spacing-too-broad');
+        if (t.count > ctx.maxLayoutMatches) value = clampNumbers(prop, value, GENTLE_CLAMPS[prop.startsWith('margin') ? 'margin' : 'padding']);
+      } else if (t.count > ctx.maxSpacingMatches) {
+        if (prop === 'font-size') value = clampNumbers(prop, value, GENTLE_CLAMPS['font-size']);
+        else if (prop === 'line-height') value = clampNumbers(prop, value, GENTLE_CLAMPS['line-height']);
+        else if (prop.startsWith('border')) value = clampNumbers(prop, value, GENTLE_CLAMPS.border);
+      }
+    }
+  }
   value = clampNumbers(prop, value);
   if (prop === 'z-index' && /^-?\d+$/.test(value) && parseInt(value, 10) > 2147483000) value = '2147483000';
   return { prop, value, important: ctx.forceImportant && !ctx.keyframes && !ctx.fontFace ? true : d.important };
@@ -477,7 +535,7 @@ function serializeDecls(decls) {
 }
 
 export function validateCss(text, options = {}) {
-  const { doc = null, mode = 'design', forceImportant = true, maxRules = 400, maxDecls = 60, allowUnmatched = false } = options;
+  const { doc = null, mode = 'design', forceImportant = true, maxRules = 400, maxDecls = 60, allowUnmatched = false, maxLayoutMatches = 40, maxSpacingMatches = 150 } = options;
   const protect = options.protect || DEFAULT_PROTECT;
   const parsed = parseCss(String(text || '').replace(/```[a-z]*/gi, ''));
   const out = { css: '', kept: 0, dropped: [], warnings: [], iconVars: new Set(), varsUsed: new Set(), errors: parsed.errors, mode };
@@ -567,7 +625,9 @@ export function validateCss(text, options = {}) {
         keyframes: inKeyframes,
         fontFace: false,
         forceImportant,
-        targets: () => targetsCache || (targetsCache = classifyTargets(doc, probes.length ? probes : selectorParts.map(probeSelector))),
+        maxLayoutMatches,
+        maxSpacingMatches,
+        targets: () => targetsCache || (targetsCache = classifyTargets(doc, probes.length ? probes : selectorParts.map(probeSelector), 400)),
       };
       if (node.declarations.length > maxDecls) out.warnings.push(`truncated declarations for ${selector}`);
       const decls = node.declarations.slice(0, maxDecls).map((d) => validateDeclaration(d, ctx, out)).filter(Boolean);

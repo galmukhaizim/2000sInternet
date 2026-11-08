@@ -67,7 +67,9 @@ training/                     Python pipeline (scrape, teacher dataset, repair d
    origin-scoped, so running in-page would re-download ~1 GB per site; a fixed
    origin downloads once. It also sidesteps page CSP rules on `connect-src` and WASM.
    The userscript and host talk over `postMessage` (protocol in `model/engine.js`,
-   mirrored in `host/host.js`). If the frame is blocked by `frame-src`, we degrade:
+   mirrored in `host/host.js`). If the frame is blocked by `frame-src`, we fall back
+   to opening the host as a popup window (`connect({ mode: 'popup' })`, needs a
+   user gesture; the block is remembered per site as `frameBlocked`), otherwise
    cached CSS if present, else a notice. Never move the model into the page context
    without asking the user.
 2. **CSS is applied through constructed stylesheets** (`document.adoptedStyleSheets`),
@@ -82,7 +84,14 @@ training/                     Python pipeline (scrape, teacher dataset, repair d
 4. **Validation is mandatory** before any model CSS touches the page (full designs
    and repair patches). See `validate.js`: parse, reject malformed rules, drop
    selectors that match nothing, block `@import` and non-`data:` `url()`, clamp
-   absurd values, refuse to hide the page.
+   absurd values, refuse to hide the page. **Layout guard rails**: layout
+   properties (display, position, size, flex/grid, overflow, transform, …) only on
+   selectors matching ≤ `maxLayoutMatches` (40) elements; margin/padding only up to
+   `maxSpacingMatches` (150) and gently clamped beyond 40; media elements
+   (video/iframe/canvas…) accept cosmetics only and their containers cannot be
+   resized/hidden; flex/grid containers cannot become block; `content` only on
+   pseudo-elements. The summarizer hides framework scoping classes (stamped on
+   >10% of elements) so the model never selects them.
 5. **Library is a toolkit, not a theme.** `library.css` only defines custom
    properties (`--icon-*`, `--bg-*`, `--font-*`, `--cursor-*`, `--grad-*`, recipe
    vars) and opt-in utility classes (`.retro-*`, `.marquee-bar`, `.hit-counter`,

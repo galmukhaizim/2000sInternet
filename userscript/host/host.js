@@ -12,7 +12,7 @@
 import { CreateMLCEngine, prebuiltAppConfig, modelLibURLPrefix, modelVersion } from '@mlc-ai/web-llm';
 
 const NS = 'retro-web';
-const VERSION = '0.2.0';
+const VERSION = '0.3.0';
 const statusEl = document.getElementById('status');
 const logEl = document.getElementById('log');
 
@@ -28,8 +28,12 @@ function log(msg) {
 function setStatus(s) {
   if (statusEl) statusEl.textContent = s;
 }
+// The userscript either embeds this page in a hidden iframe (parent) or, when
+// the site's CSP forbids frames, opens it as a popup window (opener).
+const peer = window.opener || (window.parent !== window ? window.parent : null);
+const isPopup = !!window.opener;
 function post(msg) {
-  if (window.parent && window.parent !== window) window.parent.postMessage({ ns: NS, ...msg }, '*');
+  if (peer) peer.postMessage({ ns: NS, ...msg }, '*');
 }
 function errorCode(e) {
   const m = String((e && e.message) || e);
@@ -178,7 +182,7 @@ function pump() {
 }
 
 window.addEventListener('message', async (e) => {
-  if (e.source !== window.parent) return;
+  if (!peer || e.source !== peer) return;
   const m = e.data;
   if (!m || m.ns !== NS) return;
   try {
@@ -209,6 +213,16 @@ window.addEventListener('message', async (e) => {
           if (i >= 0) queue.splice(i, 1);
         }
         break;
+      case 'close':
+        if (isPopup) {
+          try {
+            if (engine) await engine.unload();
+          } catch {
+            /* ignore */
+          }
+          window.close();
+        }
+        break;
       case 'unload':
         if (engine) {
           try {
@@ -229,5 +243,10 @@ window.addEventListener('message', async (e) => {
   }
 });
 
-setStatus(window.parent === window ? 'open as a standalone page; nothing to do' : 'ready for handshake');
+setStatus(!peer ? 'open as a standalone page; nothing to do' : 'ready for handshake');
+if (isPopup) {
+  const note = document.getElementById('popup-note');
+  if (note) note.hidden = false;
+  document.title = 'retro-web model engine';
+}
 log('host ' + VERSION + ' loaded');

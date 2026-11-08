@@ -6,7 +6,7 @@ import { summarizePage } from './summarize.js';
 import { validateApplyClass, applyClassDirectives, removeClassDirectives } from './validate.js';
 import { libraryClassNames, libraryIconNames } from './assets/index.js';
 import { pickStyle, getStyle } from './model/styles.js';
-import { ModelClient, describeModelError } from './model/engine.js';
+import { ModelClient, ModelUnavailableError, describeModelError } from './model/engine.js';
 import { generateDesign } from './model/designer.js';
 import { snapshotVisibility } from './repair/inspect.js';
 import { runRepairLoop } from './repair/loop.js';
@@ -51,6 +51,28 @@ export function createPipeline({ doc, hostname, slots, panel, setState, getSetti
       },
     });
     return client;
+  }
+
+  // Frame first; if this site's CSP blocks it, fall back to a popup window, which
+  // needs a user gesture. Remembers the block per site so later runs skip the wait.
+  async function connectClient(c, settings, userGesture) {
+    const rec = storage.getSiteRecord(hostname) || {};
+    const popupOk = settings.popupFallback !== false;
+    const needGesture = () =>
+      new ModelUnavailableError('needs-gesture', "this site's security policy blocks the hidden model frame — press Redesign to run the model in a small popup window");
+    if (rec.frameBlocked && popupOk) {
+      if (!userGesture) throw needGesture();
+      return c.connect({ mode: 'popup' });
+    }
+    try {
+      return await c.connect({ mode: 'frame' });
+    } catch (e) {
+      if (!(e && e.code === 'host-blocked' && popupOk)) throw e;
+      storage.saveSiteRecord(hostname, { frameBlocked: true });
+      if (!userGesture) throw needGesture();
+      status('frame blocked by this site — opening the model in a popup window…');
+      return c.connect({ mode: 'popup' });
+    }
   }
 
   function clearApplied() {
@@ -101,7 +123,7 @@ export function createPipeline({ doc, hostname, slots, panel, setState, getSetti
     }
   }
 
-  async function runDesign({ styleId } = {}) {
+  async function runDesign({ styleId, userGesture = false } = {}) {
     stop();
     const settings = getSettings();
     const ctl = (controller = new AbortController());
@@ -122,6 +144,7 @@ export function createPipeline({ doc, hostname, slots, panel, setState, getSetti
       const summary = summarizePage(doc, { tokenBudget: settings.summaryTokenBudget });
       status(`loading designer model…`);
       const c = getClient(settings);
+      await connectClient(c, settings, userGesture);
       await c.load();
       if (signal.aborted) return null;
       panel && panel.setProgress(null);
@@ -219,6 +242,11 @@ export function createPipeline({ doc, hostname, slots, panel, setState, getSetti
         setState('idle');
         return null;
       }
+      if (e && e.code === 'needs-gesture') {
+        status(e.message, 'err');
+        setState('idle', { needsGesture: true });
+        return null;
+      }
       console.warn('[retro-web] design failed', e);
       status('error: ' + describeModelError(e), 'err');
       setState('error', { message: describeModelError(e), code: e && e.code });
@@ -227,6 +255,12 @@ export function createPipeline({ doc, hostname, slots, panel, setState, getSetti
       if (controller === ctl) controller = null;
       panel && panel.setBusy(false);
       panel && panel.setProgress(null);
+      // a popup engine window is closed once the run is over; the frame stays for reuse
+      if (client && client.mode === 'popup') {
+        client.dispose();
+        client = null;
+        clientKey = null;
+      }
     }
   }
 

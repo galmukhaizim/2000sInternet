@@ -353,7 +353,11 @@ export function summarizePage(doc = document, options = {}) {
     }
     if (e.id && isStableToken(e.id) && e.children.length >= 2 && idList.length < 40) idList.push({ id: e.id, tag: e.localName, children: e.children.length });
   }
+  // Classes stamped on a large share of elements are framework scoping classes
+  // (e.g. .style-scope on YouTube): useless for design and dangerous as selectors.
+  const scopingLimit = Math.max(40, Math.round(visible.length * 0.1));
   const classes = [...classFreq.entries()]
+    .filter(([, v]) => v.count <= scopingLimit)
     .sort((a, b) => b[1].count - a[1].count)
     .slice(0, 30)
     .map(([name, v]) => ({ name, count: v.count, tag: [...v.tags.entries()].sort((a, b) => b[1] - a[1])[0][0] }));

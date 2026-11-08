@@ -8,7 +8,7 @@ export class ModelUnavailableError extends Error {
   constructor(code, message) {
     super(message);
     this.name = 'ModelUnavailableError';
-    this.code = code; // 'host-blocked' | 'host-unreachable' | 'webgpu' | 'network' | 'memory' | 'model-id' | 'engine'
+    this.code = code; // 'host-blocked' | 'host-unreachable' | 'popup-blocked' | 'popup-closed' | 'needs-gesture' | 'webgpu' | 'network' | 'memory' | 'model-id' | 'engine'
   }
 }
 
@@ -23,6 +23,8 @@ export class ModelClient {
     this.handshakeTimeoutMs = handshakeTimeoutMs;
     this.loadTimeoutMs = loadTimeoutMs;
     this.frame = null;
+    this.popup = null;
+    this.mode = null; // 'frame' | 'popup'
     this.ready = null;
     this.loaded = null;
     this.info = null;
@@ -39,13 +41,22 @@ export class ModelClient {
     }
   }
 
+  // The window we talk to: the hidden frame, or the popup when the page's CSP blocks frames.
+  get peer() {
+    if (this.frame) return this.frame.contentWindow;
+    if (this.popup && !this.popup.closed) return this.popup;
+    return null;
+  }
+
   _post(msg) {
-    if (!this.frame || !this.frame.contentWindow) throw new ModelUnavailableError('host-unreachable', 'model host frame missing');
-    this.frame.contentWindow.postMessage({ ns: NS, ...msg }, this.hostOrigin || '*');
+    const peer = this.peer;
+    if (!peer) throw new ModelUnavailableError('host-unreachable', 'model host window missing');
+    peer.postMessage({ ns: NS, ...msg }, this.hostOrigin || '*');
   }
 
   _onMessage(e) {
-    if (!this.frame || e.source !== this.frame.contentWindow) return;
+    const peer = this.peer;
+    if (!peer || e.source !== peer) return;
     const m = e.data;
     if (!m || m.ns !== NS) return;
     switch (m.t) {
@@ -89,52 +100,90 @@ export class ModelClient {
     }
   }
 
-  // Creates the hidden iframe and waits for the host's `ready`.
-  connect() {
+  _hostUrl() {
+    const url = new URL(this.hostUrl);
+    if (!/\.html$/.test(url.pathname) && !url.pathname.endsWith('/')) url.pathname += '/';
+    url.searchParams.set('v', '2');
+    return url;
+  }
+
+  // Connects to the host and waits for its `ready`. mode 'frame' (default) uses a
+  // hidden iframe; mode 'popup' opens a small window instead, which a page's CSP
+  // cannot block but which needs a user gesture (click) to be allowed.
+  connect({ mode = 'frame' } = {}) {
     if (this.ready) return this.ready;
+    this.mode = mode;
     this.ready = new Promise((resolve, reject) => {
       const doc = this.doc;
       const win = doc.defaultView || window;
-      const url = new URL(this.hostUrl);
-      if (!/\.html$/.test(url.pathname) && !url.pathname.endsWith('/')) url.pathname += '/';
-      url.searchParams.set('v', '1');
+      const url = this._hostUrl();
+      let settled = false;
+      let hello = null;
+      let timer = null;
+      let onCsp = null;
+      const finish = (err, info) => {
+        if (settled) return;
+        settled = true;
+        clearInterval(hello);
+        clearTimeout(timer);
+        if (onCsp) doc.removeEventListener('securitypolicyviolation', onCsp);
+        if (err) {
+          this.dispose();
+          reject(err);
+        } else resolve(info);
+      };
+      this._readyResolve = (info) => finish(null, info);
+      win.addEventListener('message', this._listener);
+
+      if (mode === 'popup') {
+        url.searchParams.set('popup', '1');
+        const w = Math.min(520, win.screen ? win.screen.availWidth : 520);
+        const features = `popup=yes,width=${w},height=320,left=${Math.max(0, (win.screen ? win.screen.availWidth : 1200) - w - 20)},top=40`;
+        let popup = null;
+        try {
+          popup = win.open(url.href, 'retro-web-host', features);
+        } catch {
+          popup = null;
+        }
+        if (!popup) return finish(new ModelUnavailableError('popup-blocked', 'the browser blocked the model window — allow popups for this site, or press Redesign again'));
+        this.popup = popup;
+        hello = setInterval(() => {
+          if (popup.closed) return finish(new ModelUnavailableError('popup-closed', 'the model window was closed'));
+          try {
+            this._post({ t: 'hello' });
+          } catch {
+            /* not yet */
+          }
+        }, 400);
+        timer = setTimeout(() => finish(new ModelUnavailableError('host-unreachable', `model host not reachable at ${this.hostUrl}`)), this.handshakeTimeoutMs);
+        return;
+      }
+
       const frame = doc.createElement('iframe');
       frame.setAttribute('aria-hidden', 'true');
       frame.setAttribute('title', 'retro-web model host');
       frame.setAttribute('data-retro-web', 'host');
       frame.style.cssText = 'position:fixed!important;width:1px!important;height:1px!important;left:-9999px!important;top:-9999px!important;border:0!important;opacity:0!important;pointer-events:none!important;';
-      let blocked = false;
-      const onCsp = (ev) => {
+      onCsp = (ev) => {
         const d = (ev.effectiveDirective || ev.violatedDirective || '').split(' ')[0];
-        if (/^(frame-src|child-src|default-src)$/.test(d) && String(ev.blockedURI || '').startsWith(this.hostOrigin || '\u0000')) blocked = true;
+        if (/^(frame-src|child-src|default-src)$/.test(d) && String(ev.blockedURI || '').startsWith(this.hostOrigin || '\u0000')) {
+          // fail fast so a popup fallback can still use the user's click
+          finish(new ModelUnavailableError('host-blocked', `this site's Content Security Policy blocks the model host frame (${this.hostOrigin})`));
+        }
       };
       doc.addEventListener('securitypolicyviolation', onCsp);
-      win.addEventListener('message', this._listener);
       this.frame = frame;
-      this._readyResolve = (info) => {
-        clearInterval(hello);
-        clearTimeout(timer);
-        doc.removeEventListener('securitypolicyviolation', onCsp);
-        resolve(info);
-      };
-      const hello = setInterval(() => {
+      hello = setInterval(() => {
         try {
           if (frame.contentWindow) this._post({ t: 'hello' });
         } catch {
           /* not yet */
         }
       }, 400);
-      const timer = setTimeout(() => {
-        clearInterval(hello);
-        doc.removeEventListener('securitypolicyviolation', onCsp);
-        this.dispose();
-        this.ready = null;
-        reject(
-          blocked
-            ? new ModelUnavailableError('host-blocked', `this site's Content Security Policy blocks the model host frame (${this.hostOrigin})`)
-            : new ModelUnavailableError('host-unreachable', `model host not reachable at ${this.hostUrl} (GitHub Pages not deployed yet, or for local dev run \`npm run host\` and set the Host URL in Advanced)`),
-        );
-      }, this.handshakeTimeoutMs);
+      timer = setTimeout(
+        () => finish(new ModelUnavailableError('host-unreachable', `model host not reachable at ${this.hostUrl} (GitHub Pages not deployed yet, or for local dev run \`npm run host\` and set the Host URL in Advanced)`)),
+        this.handshakeTimeoutMs,
+      );
       frame.src = url.href;
       (doc.body || doc.documentElement).appendChild(frame);
     });
@@ -204,7 +253,23 @@ export class ModelClient {
         /* ignore */
       }
     }
+    if (this.popup) {
+      // ask the host window to close itself, and also close it from here
+      const popup = this.popup;
+      try {
+        if (!popup.closed) popup.postMessage({ ns: NS, t: 'close' }, this.hostOrigin || '*');
+      } catch {
+        /* ignore */
+      }
+      try {
+        popup.close();
+      } catch {
+        /* ignore */
+      }
+    }
     this.frame = null;
+    this.popup = null;
+    this.mode = null;
     this.ready = null;
     this.loaded = null;
     for (const [, p] of this.pending) p.reject(new ModelUnavailableError('engine', 'client disposed'));
@@ -221,6 +286,10 @@ export function describeModelError(err) {
         return 'blocked by this site\'s CSP (model host frame)';
       case 'host-unreachable':
         return 'model host unreachable (check Host URL in Advanced; local dev: `npm run host`)';
+      case 'popup-blocked':
+      case 'popup-closed':
+      case 'needs-gesture':
+        return err.message;
       case 'webgpu':
         return 'WebGPU unavailable in this browser';
       case 'network':

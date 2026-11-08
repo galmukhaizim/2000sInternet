@@ -169,3 +169,63 @@ describe('selector helpers', () => {
     expect(probeSelector('li:nth-child(2n) > a:focus-visible')).toBe('li:nth-child(2n) > a');
   });
 });
+
+describe('layout guard rails (keep complex pages working)', () => {
+  const APP = `
+<header id="top"><nav class="main-nav">${Array.from({ length: 12 }, (_, i) => `<a href="#">L${i}</a>`).join('')}</nav></header>
+<main id="content">
+  <div class="player" id="player"><video src="x.mp4"></video></div>
+  <div class="grid" style="display:flex">${Array.from({ length: 60 }, (_, i) => `<div class="card"><span class="scope">c${i}</span><a href="#">go</a></div>`).join('')}</div>
+  <p class="lead">Hello world, a paragraph of text that is long enough to count.</p>
+</main>`;
+  const v = (css, opts = {}) => validateCss(css, { doc: document, ...opts });
+  beforeEach(() => {
+    document.body.innerHTML = APP;
+  });
+  it('lets broad selectors change cosmetics but not layout', () => {
+    const r = v('div { background: #111; color: #0f0; border: 1px solid #0f0; display: block; padding: 40px; width: 100% }');
+    expect(r.css).toContain('background: #111 !important');
+    expect(r.css).toContain('border: 1px solid #0f0 !important');
+    expect(r.css).not.toContain('display:');
+    expect(r.css).not.toContain('width:');
+    expect(r.css).toContain('padding: 24px !important'); // gently clamped on broad selectors
+    expect(r.dropped.map((d) => d.reason).sort()).toEqual(['layout-too-broad', 'layout-too-broad']);
+  });
+  it('allows layout on specific selectors', () => {
+    const r = v('nav.main-nav a { display: inline-block; padding: 4px 12px; margin-right: 6px } #content { max-width: 980px; margin: 0 auto; padding: 20px }');
+    expect(r.kept).toBe(2);
+    expect(r.css).toContain('display: inline-block !important');
+    expect(r.css).toContain('max-width: 980px !important');
+  });
+  it('never resizes or hides media elements or their containers', () => {
+    const r = v('video { width: 100px; height: 50px; border: 2px solid red; display: none } div.player { height: 0; display: block; overflow: hidden; background: #000 }');
+    expect(r.css).toContain('video { border: 2px solid red !important; }');
+    expect(r.css).toContain('div.player { background: #000 !important; }');
+    expect(r.dropped.map((d) => d.reason)).toEqual(expect.arrayContaining(['media-element', 'media-container']));
+  });
+  it('does not convert flex/grid containers to block', () => {
+    const r = v('div.grid { display: block; gap: 12px } div.grid { display: inline-flex }');
+    expect(r.css).not.toContain('display: block');
+    expect(r.css).toContain('display: inline-flex !important');
+    expect(r.css).toContain('gap: 12px !important');
+  });
+  it('refuses display changes on html/body except block', () => {
+    const r = v('body { display: grid; background: #ccc } html { display: block }');
+    expect(r.css).toContain('body { background: #ccc !important; }');
+    expect(r.css).toContain('html { display: block !important; }');
+  });
+  it('drops spacing on very broad selectors and tames font sizes', () => {
+    document.body.innerHTML = APP + Array.from({ length: 200 }, () => '<span class="many">x</span>').join('');
+    const r = v('span { padding: 8px; font-size: 40px; line-height: 3; border-width: 10px; color: #fff }');
+    expect(r.css).not.toContain('padding');
+    expect(r.css).toContain('font-size: 20px !important');
+    expect(r.css).toContain('line-height: 1.8 !important');
+    expect(r.css).toContain('border-width: 4px !important');
+    expect(r.dropped[0].reason).toBe('spacing-too-broad');
+  });
+  it('allows content only on pseudo-elements', () => {
+    const r = v('p.lead { content: "x"; color: red } p.lead::before { content: "★ " }');
+    expect(r.css).toContain('p.lead { color: red !important; }');
+    expect(r.css).toContain('p.lead::before { content: "★ " !important; }');
+  });
+});

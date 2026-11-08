@@ -56,7 +56,7 @@ function main() {
           setState('disabled');
         } else {
           panel.setStatus('enabled — redesigning', 'ok');
-          pipeline.runDesign({});
+          pipeline.runDesign({ userGesture: true });
         }
       },
       onStyleChange(style) {
@@ -64,7 +64,7 @@ function main() {
       },
       onRedesign({ style }) {
         settings = storage.saveSettings({ style });
-        pipeline.runDesign({ styleId: style });
+        pipeline.runDesign({ styleId: style, userGesture: true });
       },
       onRestore() {
         pipeline.restore();
@@ -116,7 +116,7 @@ function main() {
     panel.setReport(text);
     panel.showReport();
   });
-  storage.registerMenuCommand('retro-web: redesign this page', () => pipeline.runDesign({}));
+  storage.registerMenuCommand('retro-web: redesign this page', () => pipeline.runDesign({ userGesture: true }));
   storage.registerMenuCommand('retro-web: list generated icons', () => {
     const list = iconResolver.cache.list();
     console.log(`[retro-web] ${list.length} generated icon(s) in the shared cache`, list.map((i) => i.name));

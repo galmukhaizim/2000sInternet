@@ -6,7 +6,8 @@
 <script>
 (() => {
   const NS = 'retro-web';
-  const post = (m) => window.parent.postMessage({ ns: NS, ...m }, '*');
+  const peer = window.opener || window.parent;
+  const post = (m) => peer.postMessage({ ns: NS, ...m }, '*');
   const params = new URLSearchParams(location.search);
   const delay = Number(params.get('delay') || 3);
   const DESIGN = `
@@ -36,9 +37,10 @@ p { font-size: 12px; }
 `;
   let loaded = null;
   window.addEventListener('message', (e) => {
-    if (e.source !== window.parent) return;
+    if (e.source !== peer) return;
     const m = e.data;
     if (!m || m.ns !== NS) return;
+    if (m.t === 'close' && window.opener) window.close();
     if (m.t === 'hello') post({ t: 'ready', version: 'mock', webgpu: params.get('webgpu') !== '0', reason: params.get('webgpu') === '0' ? 'mock says no' : undefined, modelId: loaded });
     if (m.t === 'load') {
       let i = 0;

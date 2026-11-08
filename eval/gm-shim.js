@@ -16,7 +16,10 @@
     store.delete(k);
   };
   window.GM_listValues = () => [...store.keys()];
-  window.GM_registerMenuCommand = () => {};
+  window.__retroMenu = {};
+  window.GM_registerMenuCommand = (label, fn) => {
+    window.__retroMenu[label] = fn;
+  };
   window.GM_addStyle = (css) => {
     const s = document.createElement('style');
     s.textContent = css;

@@ -10,6 +10,7 @@ Rules:
 - Never nest rules. No @import. No external url(). Only library assets via var(--icon-NAME), var(--bg-NAME), var(--grad-NAME), var(--font-NAME), var(--cursor-NAME) plus plain colors.
 - Keep text readable: body text 12px or larger, strong contrast between text and background. Never hide content.
 - Restyle everything visible: body background, fonts, headings, links, nav, header, main content, sidebar, footer, buttons, inputs, images, tables, forms.
+- Keep the page working. On broad selectors (bare tags like div, span, a, li, img, or classes used everywhere) change only colors, backgrounds, borders, fonts and text decoration. Put layout changes (padding, margin, display, width) only on the specific landmark selectors, buttons, inputs and nav links from the summary. Never move or resize video players, iframes or their containers; a border or shadow is fine.
 - Icons: decorate nav links and buttons with 16px icons: background-image: var(--icon-NAME); background-repeat: no-repeat; background-position: 4px center; padding-left: 24px;
 - If the library lacks an icon you need, add a line: /* icon-request: name | short description */ and then use var(--icon-name).
 - To attach a library component class write a line: /* apply-class: selector | class-name */

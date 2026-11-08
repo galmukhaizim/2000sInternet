@@ -113,3 +113,13 @@ describe('helpers', () => {
     expect(estimateTokens(t)).toBeLessThanOrEqual(120);
   });
 });
+
+describe('scoping classes', () => {
+  it('omits classes stamped on most elements (framework scoping) from the summary', () => {
+    document.body.innerHTML = '<main>' + Array.from({ length: 120 }, (_, i) => `<div class="style-scope item${i % 3}">x</div>`).join('') + '</main>';
+    const { data, text } = summarizePage(document);
+    expect(data.classes.find((c) => c.name === 'style-scope')).toBeUndefined();
+    expect(data.classes.find((c) => c.name === 'item0').count).toBe(40);
+    expect(text).not.toContain('style-scope');
+  });
+});
