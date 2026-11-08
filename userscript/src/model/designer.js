@@ -3,7 +3,7 @@
 import { RuleStreamer } from '../apply.js';
 import { validateCss, extractDirectives } from '../validate.js';
 import { designMessages, repairMessages } from './prompts.js';
-import { manifestToPrompt, estimateTokens } from '../assets/index.js';
+import { manifestToPrompt, manifestToPromptCompact, estimateTokens } from '../assets/index.js';
 
 function mergeDirectives(into, d) {
   for (const r of d.iconRequests) if (!into.iconRequests.some((x) => x.name === r.name)) into.iconRequests.push(r);
@@ -49,9 +49,9 @@ async function streamValidated({ client, messages, params, doc, mode, onChunk, s
   return result;
 }
 
-export async function generateDesign({ client, doc, summaryText, style, settings, onChunk, signal }) {
-  const manifestText = manifestToPrompt();
-  const messages = designMessages({ summaryText, manifestText, style });
+export async function generateDesign({ client, doc, summaryText, style, settings, onChunk, signal, enhance = false }) {
+  const manifestText = enhance ? manifestToPromptCompact() : manifestToPrompt();
+  const messages = designMessages({ summaryText, manifestText, style, enhance });
   const promptTokens = estimateTokens(messages.map((m) => m.content).join('\n'));
   const params = { temperature: settings.temperature, topP: settings.topP, maxTokens: settings.maxDesignTokens, disableThinking: true };
   const result = await streamValidated({ client, messages, params, doc, mode: 'design', onChunk, signal });

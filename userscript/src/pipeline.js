@@ -9,6 +9,8 @@ import { pickStyle, getStyle } from './model/styles.js';
 import { ModelClient, ModelUnavailableError, describeModelError } from './model/engine.js';
 import { generateDesign } from './model/designer.js';
 import { snapshotVisibility } from './repair/inspect.js';
+import { renderPack } from './packs/index.js';
+import { validateCss } from './validate.js';
 import { runRepairLoop } from './repair/loop.js';
 import * as storage from './storage.js';
 
@@ -142,16 +144,74 @@ export function createPipeline({ doc, hostname, slots, panel, setState, getSetti
       status(`summarizing page…`);
       const baseline = snapshotVisibility(doc);
       const summary = summarizePage(doc, { tokenBudget: settings.summaryTokenBudget });
-      status(`loading designer model…`);
+      const mode = settings.designMode || 'hybrid';
+
+      // 1. instant hand-made style pack (no model needed)
+      let packCss = '';
+      let packRules = 0;
+      let quickFallbackCss = '';
+      if (mode !== 'model') {
+        const pack = renderPack(style.id, summary.data);
+        const v = validateCss(pack.css, { doc, mode: 'design' });
+        packCss = v.css;
+        packRules = v.kept;
+        slots.design.set(packCss);
+        applyDirectives(pack.applyClass);
+        // cache right away so reloads are instant even if the model never finishes
+        storage.saveSiteRecord(hostname, {
+          css: packCss,
+          patchCss: '',
+          fallbackCss: '',
+          iconCss: '',
+          applyClass: appliedClasses.map((a) => ({ selector: a.selector, className: a.className })),
+          style: style.id,
+          stage: 'pack',
+          stats: { kept: packRules, dropped: v.dropped.length, ms: Date.now() - t0 },
+        });
+        // quick deterministic pass (no model): fixes the contrast/overflow issues a
+        // theme can cause on site sections it does not know about
+        let quick = null;
+        if (settings.inspect !== false) {
+          await new Promise((r) => setTimeout(r, 80));
+          try {
+            quick = await runRepairLoop({ client: null, doc, designCss: packCss, style, settings: { ...settings, maxRepairRounds: 0 }, baseline, iconVars: [], slots, signal, status: () => {}, settleMs: 60 });
+            quickFallbackCss = quick.fallbackCss || '';
+            storage.saveSiteRecord(hostname, { fallbackCss: quickFallbackCss, report: quick.report });
+          } catch (e) {
+            console.warn('[retro-web] quick fix pass failed', e);
+          }
+        }
+        status(`${style.name} applied (${packRules} rules)${mode === 'pack' ? '' : ' · adding site-specific touches with the model…'}`, 'ok');
+        if (mode === 'pack') {
+          const record = storage.getSiteRecord(hostname);
+          panel && panel.setReport(formatReport(record));
+          setState('done', { style: style.id, rules: packRules, stage: 'pack' });
+          return record;
+        }
+      }
+
+      // 2. the model: whole design ('model') or site-specific extras ('hybrid')
       const c = getClient(settings);
-      await connectClient(c, settings, userGesture);
-      await c.load();
+      try {
+        await connectClient(c, settings, userGesture);
+        await c.load();
+      } catch (e) {
+        if (!packCss || (e && e.name === 'AbortError')) throw e;
+        // the pack is on screen; report why the model part is missing and stop here
+        const why = describeModelError(e);
+        status(`${style.name} applied · model skipped: ${why}`, e && e.code === 'needs-gesture' ? 'err' : 'ok');
+        const record = storage.getSiteRecord(hostname);
+        panel && panel.setReport(formatReport(record) + '\n\nMODEL: ' + why);
+        setState('done', { style: style.id, rules: packRules, stage: 'pack', modelSkipped: why });
+        return record;
+      }
       if (signal.aborted) return null;
       panel && panel.setProgress(null);
       setState('designing', { style: style.id });
-      status(`designing (${style.name})…`);
+      status(packCss ? `${style.name} applied · model adding touches…` : `designing (${style.name})…`);
       let rules = 0;
       const pendingIcons = [];
+      const join = (a, b) => [a, b].filter(Boolean).join('\n');
       const design = await generateDesign({
         client: c,
         doc,
@@ -159,15 +219,18 @@ export function createPipeline({ doc, hostname, slots, panel, setState, getSetti
         style,
         settings,
         signal,
+        enhance: !!packCss,
         onChunk: ({ css, applyClass, iconRequests, result }) => {
-          slots.design.set(css);
+          slots.design.set(join(packCss, css));
           if (applyClass.length) applyDirectives(applyClass);
           if (iconRequests.length) pendingIcons.push(...iconRequests);
           rules = result.kept;
-          status(`designing (${style.name})… ${rules} rules`);
+          status(packCss ? `${style.name} applied · model added ${rules} rules…` : `designing (${style.name})… ${rules} rules`);
         },
       });
       if (signal.aborted) return null;
+      design.css = join(packCss, design.css);
+      design.kept += packRules;
 
       // icons: resolver (phase 4) or placeholders
       const iconRequests = design.iconRequests;
@@ -199,7 +262,7 @@ export function createPipeline({ doc, hostname, slots, panel, setState, getSetti
         const rep = await repairFn({ client: c, doc, designCss: design.css, style, settings, baseline, iconVars: [...referenced], slots, signal, status });
         if (rep) {
           patchCss = rep.patchCss || '';
-          fallbackCss = rep.fallbackCss || '';
+          fallbackCss = [quickFallbackCss, rep.fallbackCss || ''].filter(Boolean).join('\n');
           report = rep.report || null;
           slots.patch.set(patchCss);
           slots.fallback.set(fallbackCss);
@@ -216,6 +279,7 @@ export function createPipeline({ doc, hostname, slots, panel, setState, getSetti
         iconRequests,
         iconResults: (iconReport.results || []).map((r) => ({ name: r.name, source: r.source, alias: r.alias, reason: r.reason })),
         style: style.id,
+        stage: 'full',
         report,
         stats: {
           promptTokens: design.promptTokens,
@@ -233,6 +297,7 @@ export function createPipeline({ doc, hostname, slots, panel, setState, getSetti
       const secs = ((Date.now() - t0) / 1000).toFixed(0);
       const remaining = report ? report.total : 0;
       status(`done: ${style.name} · ${design.kept} rules · ${secs}s${report ? ` · issues ${report.initial}→${remaining}` : ''}`, 'ok');
+      record.stage = 'full';
       panel && panel.setReport(formatReport(record));
       setState('done', { style: style.id, rules: design.kept });
       return record;

@@ -85,7 +85,7 @@ export async function runRepairLoop({ client, doc, designCss, style, settings, b
     const v = validateCss(fb.css, { doc, mode: 'patch' });
     fallbackCss = v.css;
     fixed = fb.fixed;
-    if (slots) slots.fallback.set(fallbackCss);
+    if (slots) slots.fallback.set([slots.fallback.css, fallbackCss].filter(Boolean).join('\n'));
     if (fallbackCss) {
       await settle(doc, settleMs);
       report = inspect(doc, opts);

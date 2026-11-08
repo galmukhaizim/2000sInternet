@@ -1,10 +1,10 @@
 // Defaults for everything configurable. User overrides live in GM storage under
 // the `settings` key (see storage.js) and are merged over these at runtime.
 
-export const VERSION = '0.3.0';
+export const VERSION = '0.4.0';
 
 // Bump when the cached site record format or the library changes incompatibly.
-export const CACHE_VERSION = 1;
+export const CACHE_VERSION = 2;
 
 export const DEFAULTS = {
   // --- model host (fixed origin iframe that runs WebLLM) ---
@@ -26,16 +26,20 @@ export const DEFAULTS = {
   topP: 0.9,
 
   // --- generation budgets (tokens) ---
-  summaryTokenBudget: 1500,
+  summaryTokenBudget: 1000,
   manifestTokenBudget: 700,
-  maxDesignTokens: 1400,
-  maxPatchTokens: 600,
+  maxDesignTokens: 700,
+  maxPatchTokens: 400,
 
   // --- behaviour ---
+  // 'hybrid': instant hand-made style pack, then the model adds site-specific
+  // touches; 'pack': style pack only (no model, no GPU needed); 'model': the
+  // model writes the whole design (slow, original behaviour).
+  designMode: 'hybrid',
   autoDesign: true,        // design new sites automatically on first visit
   popupFallback: true,     // when a site's CSP blocks the hidden frame, run the model in a popup window
   style: 'random',         // sub-style id from training/styles.json or 'random'
-  maxRepairRounds: 3,
+  maxRepairRounds: 1,
   settleDelayMs: 600,      // wait for layout/fonts before inspecting
 
   // --- Claude icon generation ---

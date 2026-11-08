@@ -421,7 +421,34 @@ export function summarizePage(doc = document, options = {}) {
   }).slice(0, 6);
   const buttonEls = visible.filter((e) => e.localName === 'button' || (e.localName === 'input' && ['submit', 'button'].includes(e.type)) || e.getAttribute('role') === 'button' || (e.localName === 'a' && /\b(btn|button|cta)\b/i.test(e.className || '')));
   const buttonGroups = groupBy(buttonEls, (e) => patternSelector(e)).slice(0, 6);
+  const buttonText = (sel) => {
+    let el = null;
+    try {
+      el = buttonEls.find((e) => e.matches(sel));
+    } catch {
+      el = null;
+    }
+    if (!el) return '';
+    return trunc(el.getAttribute('aria-label') || el.value || el.textContent || el.title || '', 30);
+  };
   const navLinks = landmarks.filter((l) => l.role === 'nav').map((l) => `${l.selector} a`);
+  // Individual nav links (text + href) so packs/models can assign icons per link.
+  const navLinkList = [];
+  for (const l of landmarks.filter((x) => x.role === 'nav')) {
+    let el = null;
+    try {
+      el = doc.querySelector(l.selector);
+    } catch {
+      el = null;
+    }
+    if (!el) continue;
+    for (const a of [...el.querySelectorAll('a[href]')].slice(0, 16)) {
+      const text = trunc(a.getAttribute('aria-label') || a.textContent || a.title || '', 30);
+      const href = a.getAttribute('href');
+      if (!href || href.length > 200 || /^(javascript|data):/i.test(href)) continue;
+      navLinkList.push({ nav: l.selector, text, href });
+    }
+  }
   const inputs = visible.filter((e) => ['input', 'select', 'textarea'].includes(e.localName) && !['hidden', 'submit', 'button', 'checkbox', 'radio'].includes(e.type));
 
   // ---- headings ----
@@ -445,8 +472,9 @@ export function summarizePage(doc = document, options = {}) {
     fonts,
     icons: { count: smallImgs.length, parents: iconParents.map(([selector, count]) => ({ selector, count })) },
     bigImages: bigImgs.slice(0, 5).map((o) => ({ selector: patternSelector(o.el), w: o.w, h: o.h })),
-    buttons: buttonGroups.map(([selector, count]) => ({ selector, count })),
+    buttons: buttonGroups.map(([selector, count]) => ({ selector, count, text: buttonText(selector) })),
     navLinkSelectors: navLinks,
+    navLinks: navLinkList,
     h1: h1 ? trunc(h1.textContent, 80) : null,
     h2: h2s.map((e) => trunc(e.textContent, 50)),
   };
@@ -457,7 +485,7 @@ export function summarizePage(doc = document, options = {}) {
 // Renders the structured data as prompt text, shrinking low-priority sections
 // until the estimate fits the token budget.
 export function renderSummary(d, tokenBudget = 1500) {
-  const limits = { classes: 30, ids: 15, landmarks: 10, icons: 6, buttons: 6, h2: 3, accents: 5 };
+  const limits = { classes: 30, ids: 15, landmarks: 10, icons: 6, buttons: 6, h2: 3, accents: 5, navLinks: 12 };
   const build = () => {
     const L = [];
     L.push(`PAGE: "${d.title || '(untitled)'}" · type: ${d.pageType}${d.lang ? ' · lang ' + d.lang : ''}`);
@@ -493,8 +521,8 @@ export function renderSummary(d, tokenBudget = 1500) {
     L.push(`FONTS: body ${d.fonts.body || '?'} ${d.fonts.bodySize || ''}${d.fonts.heading && d.fonts.heading !== d.fonts.body ? ', headings ' + d.fonts.heading : ''}`.trim());
     if (d.icons.count) L.push(`ICONS: ${d.icons.count} small images/svgs, inside: ${d.icons.parents.slice(0, limits.icons).map((p) => `${p.selector} (${p.count})`).join(', ')}`);
     if (d.bigImages.length) L.push(`IMAGES: ${d.bigImages.map((i) => `${i.selector} ${i.w}x${i.h}`).join(', ')}`);
-    if (d.buttons.length) L.push(`BUTTONS: ${d.buttons.slice(0, limits.buttons).map((b) => `${b.selector} (${b.count})`).join(', ')}`);
-    if (d.navLinkSelectors.length) L.push(`NAV LINKS: ${d.navLinkSelectors.join(', ')}`);
+    if (d.buttons.length) L.push(`BUTTONS: ${d.buttons.slice(0, limits.buttons).map((b) => `${b.selector} (${b.count}${b.text ? ' "' + b.text + '"' : ''})`).join(', ')}`);
+    if (d.navLinkSelectors.length) L.push(`NAV LINKS: ${d.navLinkSelectors.join(', ')}${d.navLinks && d.navLinks.length ? ' — ' + d.navLinks.slice(0, limits.navLinks).map((l) => l.text).filter(Boolean).join(', ') : ''}`);
     if (d.classes.length) L.push(`CLASSES: ${d.classes.slice(0, limits.classes).map((k) => `.${k.name} (${k.count} ${k.tag})`).join(', ')}`);
     if (d.ids.length) L.push(`IDS: ${d.ids.slice(0, limits.ids).map((i) => `#${i.id} (${i.tag})`).join(', ')}`);
     if (d.h1) L.push(`H1: "${d.h1}"`);
@@ -502,7 +530,7 @@ export function renderSummary(d, tokenBudget = 1500) {
     return L.join('\n');
   };
   let text = build();
-  const order = ['h2', 'ids', 'classes', 'accents', 'buttons', 'icons', 'landmarks'];
+  const order = ['h2', 'ids', 'classes', 'navLinks', 'accents', 'buttons', 'icons', 'landmarks'];
   let guard = 0;
   while (estimateTokens(text) > tokenBudget && guard++ < 40) {
     let shrunk = false;

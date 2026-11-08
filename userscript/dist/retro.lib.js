@@ -28,6 +28,7 @@ var RetroWebLib = (() => {
     RuleStreamer: () => RuleStreamer,
     STYLES: () => STYLES,
     StyleSlot: () => StyleSlot,
+    THEMES: () => THEMES,
     VERSION: () => VERSION,
     applyClassDirectives: () => applyClassDirectives,
     buildFallbackCss: () => buildFallbackCss,
@@ -44,11 +45,13 @@ var RetroWebLib = (() => {
     estimateTokens: () => estimateTokens,
     extractDirectives: () => extractDirectives,
     extractSvgFromResponse: () => extractSvgFromResponse,
+    iconForText: () => iconForText,
     iconHash: () => iconHash,
     inspectPage: () => inspectPage,
     libraryClassNames: () => libraryClassNames,
     libraryIconNames: () => libraryIconNames,
     libraryVarNames: () => libraryVarNames,
+    listPackStyles: () => listPackStyles,
     manifestToPrompt: () => manifestToPrompt,
     matchLibraryIcon: () => matchLibraryIcon,
     parseColor: () => parseColor,
@@ -56,11 +59,13 @@ var RetroWebLib = (() => {
     patternSelector: () => patternSelector,
     pickStyle: () => pickStyle,
     probeSelector: () => probeSelector,
+    renderPack: () => renderPack,
     renderReport: () => renderReport,
     renderSummary: () => renderSummary,
     repairMessages: () => repairMessages,
     runRepairLoop: () => runRepairLoop,
     sanitizeSvg: () => sanitizeSvg,
+    selectorsFromSummary: () => selectorsFromSummary,
     snapshotVisibility: () => snapshotVisibility,
     summarizePage: () => summarizePage,
     svgToDataUri: () => svgToDataUri,
@@ -71,7 +76,7 @@ var RetroWebLib = (() => {
   });
 
   // userscript/src/config.js
-  var VERSION = "0.3.0";
+  var VERSION = "0.4.0";
   var STORAGE_KEYS = {
     apiKey: "apiKey",
     settings: "settings",
@@ -1018,7 +1023,33 @@ var RetroWebLib = (() => {
     }).slice(0, 6);
     const buttonEls = visible.filter((e) => e.localName === "button" || e.localName === "input" && ["submit", "button"].includes(e.type) || e.getAttribute("role") === "button" || e.localName === "a" && /\b(btn|button|cta)\b/i.test(e.className || ""));
     const buttonGroups = groupBy(buttonEls, (e) => patternSelector(e)).slice(0, 6);
+    const buttonText = (sel) => {
+      let el = null;
+      try {
+        el = buttonEls.find((e) => e.matches(sel));
+      } catch {
+        el = null;
+      }
+      if (!el) return "";
+      return trunc(el.getAttribute("aria-label") || el.value || el.textContent || el.title || "", 30);
+    };
     const navLinks = landmarks.filter((l) => l.role === "nav").map((l) => `${l.selector} a`);
+    const navLinkList = [];
+    for (const l of landmarks.filter((x) => x.role === "nav")) {
+      let el = null;
+      try {
+        el = doc.querySelector(l.selector);
+      } catch {
+        el = null;
+      }
+      if (!el) continue;
+      for (const a of [...el.querySelectorAll("a[href]")].slice(0, 16)) {
+        const text2 = trunc(a.getAttribute("aria-label") || a.textContent || a.title || "", 30);
+        const href = a.getAttribute("href");
+        if (!href || href.length > 200 || /^(javascript|data):/i.test(href)) continue;
+        navLinkList.push({ nav: l.selector, text: text2, href });
+      }
+    }
     const inputs = visible.filter((e) => ["input", "select", "textarea"].includes(e.localName) && !["hidden", "submit", "button", "checkbox", "radio"].includes(e.type));
     const h1 = visible.find((e) => e.localName === "h1");
     const h2s = visible.filter((e) => e.localName === "h2").slice(0, 3);
@@ -1039,15 +1070,16 @@ var RetroWebLib = (() => {
       fonts,
       icons: { count: smallImgs.length, parents: iconParents.map(([selector, count]) => ({ selector, count })) },
       bigImages: bigImgs.slice(0, 5).map((o) => ({ selector: patternSelector(o.el), w: o.w, h: o.h })),
-      buttons: buttonGroups.map(([selector, count]) => ({ selector, count })),
+      buttons: buttonGroups.map(([selector, count]) => ({ selector, count, text: buttonText(selector) })),
       navLinkSelectors: navLinks,
+      navLinks: navLinkList,
       h1: h1 ? trunc(h1.textContent, 80) : null,
       h2: h2s.map((e) => trunc(e.textContent, 50))
     };
     return { text: renderSummary(data, tokenBudget), data };
   }
   function renderSummary(d, tokenBudget = 1500) {
-    const limits = { classes: 30, ids: 15, landmarks: 10, icons: 6, buttons: 6, h2: 3, accents: 5 };
+    const limits = { classes: 30, ids: 15, landmarks: 10, icons: 6, buttons: 6, h2: 3, accents: 5, navLinks: 12 };
     const build = () => {
       const L = [];
       L.push(`PAGE: "${d.title || "(untitled)"}" \xB7 type: ${d.pageType}${d.lang ? " \xB7 lang " + d.lang : ""}`);
@@ -1083,8 +1115,8 @@ var RetroWebLib = (() => {
       L.push(`FONTS: body ${d.fonts.body || "?"} ${d.fonts.bodySize || ""}${d.fonts.heading && d.fonts.heading !== d.fonts.body ? ", headings " + d.fonts.heading : ""}`.trim());
       if (d.icons.count) L.push(`ICONS: ${d.icons.count} small images/svgs, inside: ${d.icons.parents.slice(0, limits.icons).map((p) => `${p.selector} (${p.count})`).join(", ")}`);
       if (d.bigImages.length) L.push(`IMAGES: ${d.bigImages.map((i) => `${i.selector} ${i.w}x${i.h}`).join(", ")}`);
-      if (d.buttons.length) L.push(`BUTTONS: ${d.buttons.slice(0, limits.buttons).map((b) => `${b.selector} (${b.count})`).join(", ")}`);
-      if (d.navLinkSelectors.length) L.push(`NAV LINKS: ${d.navLinkSelectors.join(", ")}`);
+      if (d.buttons.length) L.push(`BUTTONS: ${d.buttons.slice(0, limits.buttons).map((b) => `${b.selector} (${b.count}${b.text ? ' "' + b.text + '"' : ""})`).join(", ")}`);
+      if (d.navLinkSelectors.length) L.push(`NAV LINKS: ${d.navLinkSelectors.join(", ")}${d.navLinks && d.navLinks.length ? " \u2014 " + d.navLinks.slice(0, limits.navLinks).map((l) => l.text).filter(Boolean).join(", ") : ""}`);
       if (d.classes.length) L.push(`CLASSES: ${d.classes.slice(0, limits.classes).map((k) => `.${k.name} (${k.count} ${k.tag})`).join(", ")}`);
       if (d.ids.length) L.push(`IDS: ${d.ids.slice(0, limits.ids).map((i) => `#${i.id} (${i.tag})`).join(", ")}`);
       if (d.h1) L.push(`H1: "${d.h1}"`);
@@ -1092,7 +1124,7 @@ var RetroWebLib = (() => {
       return L.join("\n");
     };
     let text = build();
-    const order = ["h2", "ids", "classes", "accents", "buttons", "icons", "landmarks"];
+    const order = ["h2", "ids", "classes", "navLinks", "accents", "buttons", "icons", "landmarks"];
     let guard = 0;
     while (estimateTokens(text) > tokenBudget && guard++ < 40) {
       let shrunk = false;
@@ -1531,7 +1563,7 @@ var RetroWebLib = (() => {
       if (m[1].startsWith("--icon-")) out.iconVars.add(m[1]);
     }
     if (!ctx.keyframes && !ctx.fontFace) {
-      const kind = hidingKind(prop, value);
+      const kind = ctx.pseudo ? null : hidingKind(prop, value);
       if (kind) {
         const t = ctx.targets();
         if (t.protected || t.landmark || t.interactive || t.count > 3 || t.textLength > 200) return drop("hides-content:" + kind);
@@ -1540,10 +1572,10 @@ var RetroWebLib = (() => {
         const v = value.toLowerCase();
         const t = ctx.targets();
         if (t.protected) return drop("protected");
-        if (v === "fixed" && (t.count > 3 || t.landmark)) return drop("position-fixed-too-broad");
-        if (v === "absolute" && (t.count > 25 || t.landmark)) return drop("position-absolute-too-broad");
+        if (v === "fixed" && (t.count > 3 || t.landmark && !ctx.pseudo)) return drop("position-fixed-too-broad");
+        if (v === "absolute" && (t.count > 25 || t.landmark && !ctx.pseudo)) return drop("position-absolute-too-broad");
       }
-      if (prop === "pointer-events" && /none/i.test(value)) {
+      if (prop === "pointer-events" && /none/i.test(value) && !ctx.pseudo) {
         const t = ctx.targets();
         if (t.count > 20 || t.landmark || t.interactive) return drop("pointer-events-too-broad");
       }
@@ -1562,7 +1594,7 @@ var RetroWebLib = (() => {
         if (isLayout) {
           if (t.count > ctx.maxLayoutMatches) return drop("layout-too-broad");
           if (t.mediaParent && MEDIA_CONTAINER_RISKY.test(prop)) return drop("media-container");
-          if (prop === "display") {
+          if (prop === "display" && !ctx.pseudo) {
             const v = value.trim().toLowerCase();
             if (t.root && v !== "block") return drop("display-on-root");
             if (t.flexGrid && !/^(flex|inline-flex|grid|inline-grid|contents|table.*)$/.test(v)) return drop("display-breaks-layout");
@@ -1674,6 +1706,8 @@ var RetroWebLib = (() => {
           forceImportant,
           maxLayoutMatches,
           maxSpacingMatches,
+          // every part targets a generated pseudo-element (decorations, not content)
+          pseudo: !inKeyframes && selectorParts.every((p) => /::?(before|after|marker)(?![\w-])/.test(p)),
           targets: () => targetsCache || (targetsCache = classifyTargets(doc, probes.length ? probes : selectorParts.map(probeSelector), 400))
         };
         if (node.declarations.length > maxDecls) out.warnings.push(`truncated declarations for ${selector}`);
@@ -2452,8 +2486,10 @@ Rules:
 - Typical fixes: off-center icons -> display:inline-flex; align-items:center; gap:6px on the container; overflow -> max-width:100%; overflow-wrap:anywhere; low contrast -> change color or background; small text -> font-size:12px or larger; invisible elements -> display:block (or inline-block); visibility:visible; opacity:1; inconsistent spacing -> same margin for all siblings; touching the viewport edge -> add padding.
 - Never use display:none. Never use external url(). No @import.
 - At most 20 rules.`;
-  function designMessages({ summaryText, manifestText, style }) {
-    const user = [`STYLE: ${describeStyle(style)}`, "", manifestText, "", "PAGE SUMMARY:", summaryText, "", "Write the CSS now."].join("\n");
+  var ENHANCE_INSTRUCTIONS = `A base design in this STYLE is ALREADY applied to body, links, headings, header, nav, main, sidebar, footer, buttons, inputs, images and tables. Do not restyle those again.
+Add 10 to 20 extra rules ONLY for the site-specific elements named in the PAGE SUMMARY (cards, posts, meta lines, prices, badges, tags, menus, widgets, comments, thumbnails) so they match the style: use the palette, borders, textures and fonts of the style; give small elements icons with var(--icon-NAME); request missing icons with /* icon-request */.`;
+  function designMessages({ summaryText, manifestText, style, enhance = false }) {
+    const user = [`STYLE: ${describeStyle(style)}`, "", manifestText, "", "PAGE SUMMARY:", summaryText, "", enhance ? ENHANCE_INSTRUCTIONS : "", enhance ? "Write the extra CSS rules now." : "Write the CSS now."].filter((x, i, a) => x !== "" || a[i - 1] !== "").join("\n");
     return [
       { role: "system", content: DESIGN_SYSTEM_PROMPT },
       { role: "user", content: user }
@@ -3062,7 +3098,7 @@ Rules:
       const v = validateCss(fb.css, { doc, mode: "patch" });
       fallbackCss = v.css;
       fixed = fb.fixed;
-      if (slots) slots.fallback.set(fallbackCss);
+      if (slots) slots.fallback.set([slots.fallback.css, fallbackCss].filter(Boolean).join("\n"));
       if (fallbackCss) {
         await settle(doc, settleMs);
         report = inspect(doc, opts);
@@ -3074,6 +3110,427 @@ Rules:
       report: { text: report.text, issues: report.issues.map(({ type, selector, detail }) => ({ type, selector, detail })), counts: report.counts, total: report.total, initial: initial.total, rounds, fixedByFallback: fixed },
       remaining: report.total
     };
+  }
+
+  // userscript/src/packs/themes.js
+  var THEMES = {
+    geocities: {
+      page: { bg: "#000080", bgImage: "var(--bg-tile-stars-blue)", text: "#ffff00", font: "var(--font-comic)", size: "14px", cursor: "var(--cursor-sparkle)" },
+      link: { color: "#00ffff", visited: "#ff00ff", hover: "#ffffff", hoverBg: "#ff00ff" },
+      heading: { font: "var(--font-comic)", color: "#ff00ff", shadow: "2px 2px 0 #000000", rainbow: true },
+      header: { bg: "#000000", bgImage: "var(--bg-starfield)", text: "#ffffff", border: "4px ridge #ffff00", padding: "10px 14px" },
+      nav: { bg: "#c0c0c0", text: "#000080", border: "3px outset #ffffff", link: "bevel", icon: "star", font: "var(--font-comic)" },
+      main: { bg: "#ffffff", text: "#000000", border: "4px ridge #c0c0c0", padding: "14px", bgImage: null },
+      sidebar: { bg: "#ffffcc", text: "#000080", border: "3px dashed #ff00ff", padding: "10px" },
+      footer: { bg: "#000000", text: "#00ff00", border: "2px solid #00ff00", font: "var(--font-courier)" },
+      button: "bevel",
+      input: "inset",
+      image: { border: "3px ridge #ffff00" },
+      table: "bevel",
+      extras: { hr: "rainbow", counter: true, underConstruction: true, marquee: "\u2605 Welcome to my homepage!!! \u2605 Best viewed in Netscape Navigator 4.0 at 800x600 \u2605 Sign my guestbook! \u2605", bullets: "star" }
+    },
+    "web20-glossy": {
+      page: { bg: "#e8f1fa", bgImage: "var(--grad-aqua)", bgRepeat: "repeat-x", text: "#333333", font: "var(--font-lucida)", size: "15px" },
+      link: { color: "#1f6fbf", visited: "#1f6fbf", hover: "#f7941d" },
+      heading: { font: "var(--font-trebuchet)", color: "#1f6fbf", shadow: "0 1px 0 #ffffff", weight: "bold" },
+      header: { bg: "#ffffff", bgImage: null, text: "#333333", border: "0", radius: "12px", shadow: "0 2px 8px rgba(0,0,0,.15)", padding: "12px 18px" },
+      nav: { bg: "transparent", text: "#1f6fbf", border: "0", link: "glossy", icon: "check" },
+      main: { bg: "#ffffff", text: "#333333", border: "1px solid #cfdcea", radius: "12px", shadow: "0 2px 8px rgba(0,0,0,.12)", padding: "18px" },
+      sidebar: { bg: "#f4f9ff", text: "#333333", border: "1px solid #cfdcea", radius: "12px", padding: "14px" },
+      footer: { bg: "#3b8dd6", text: "#ffffff", border: "0", radius: "12px 12px 0 0" },
+      button: "glossy-green",
+      input: "rounded",
+      image: { border: "0", radius: "8px", shadow: "0 2px 6px rgba(0,0,0,.2)" },
+      table: "rounded",
+      extras: { hr: "soft", badge: "BETA" }
+    },
+    "y2k-chrome": {
+      page: { bg: "#0a0a2a", bgImage: "var(--bg-tile-grid)", text: "#e6e6e6", font: "var(--font-verdana)", size: "13px" },
+      link: { color: "#00e5ff", visited: "#ff2bd6", hover: "#ffffff", hoverBg: "#ff2bd6" },
+      heading: { font: "var(--font-arial-black)", color: "#ffffff", shadow: "0 0 8px #00e5ff, 0 0 16px #00e5ff", transform: "uppercase", spacing: "2px" },
+      header: { bg: "#c0c0c0", bgImage: "var(--grad-chrome)", text: "#101020", border: "2px solid #ffffff", radius: "18px", padding: "10px 18px", shadow: "0 0 14px #00e5ff" },
+      nav: { bg: "transparent", text: "#101020", border: "0", link: "pill", icon: "arrow-right" },
+      main: { bg: "rgba(10,10,42,.85)", text: "#e6e6e6", border: "2px solid #00e5ff", radius: "14px", padding: "16px", shadow: "0 0 12px rgba(0,229,255,.5)" },
+      sidebar: { bg: "rgba(255,43,214,.12)", text: "#e6e6e6", border: "2px solid #ff2bd6", radius: "14px", padding: "12px" },
+      footer: { bg: "#c0c0c0", bgImage: "var(--grad-metal)", text: "#101020", border: "0" },
+      button: "pill",
+      input: "flat-dark",
+      image: { border: "2px solid #e6e6e6", radius: "10px" },
+      table: "dark",
+      extras: { hr: "neon" }
+    },
+    win98: {
+      page: { bg: "#c0c0c0", bgImage: null, text: "#000000", font: "var(--font-ms-sans)", size: "12px", cursor: "var(--cursor-arrow)" },
+      link: { color: "#000080", visited: "#000080", hover: "#ffffff", hoverBg: "#000080" },
+      heading: { font: "var(--font-tahoma)", color: "#000080", weight: "bold" },
+      header: { bg: "#000080", bgImage: "var(--grad-titlebar)", text: "#ffffff", border: "2px outset #ffffff", padding: "4px 8px", font: "bold 12px var(--font-ms-sans)" },
+      nav: { bg: "#c0c0c0", text: "#000000", border: "2px outset #ffffff", link: "bevel", icon: "folder", font: "var(--font-ms-sans)" },
+      main: { bg: "#ffffff", text: "#000000", border: "2px inset #ffffff", padding: "12px" },
+      sidebar: { bg: "#c0c0c0", text: "#000000", border: "2px outset #ffffff", padding: "8px" },
+      footer: { bg: "#c0c0c0", text: "#000000", border: "2px inset #ffffff", font: "var(--font-ms-sans)", size: "11px" },
+      button: "bevel",
+      input: "inset",
+      image: { border: "1px solid #000000", padding: "2px", bg: "#ffffff" },
+      table: "bevel",
+      extras: { hr: "groove", statusBar: true }
+    },
+    "early-blog": {
+      page: { bg: "#f4f1ea", bgImage: null, text: "#333333", font: "var(--font-verdana)", size: "13px" },
+      link: { color: "#8a6d3b", visited: "#5a6b4a", hover: "#c9b99b", decoration: "underline" },
+      heading: { font: "var(--font-georgia)", color: "#5a6b4a", weight: "normal", style: "italic" },
+      header: { bg: "#5a6b4a", bgImage: null, text: "#f4f1ea", border: "0", borderBottom: "4px solid #c9b99b", padding: "18px 22px" },
+      nav: { bg: "#f4f1ea", text: "#5a6b4a", border: "1px dotted #8a6d3b", link: "plain", icon: "file", font: "var(--font-georgia)" },
+      main: { bg: "#ffffff", text: "#333333", border: "1px dotted #c9b99b", padding: "22px", narrow: "760px" },
+      sidebar: { bg: "#f4f1ea", text: "#5a6b4a", border: "1px dashed #c9b99b", padding: "12px", size: "12px" },
+      footer: { bg: "#f4f1ea", text: "#8a6d3b", border: "1px dotted #8a6d3b", size: "11px" },
+      button: "flat-earth",
+      input: "dotted",
+      image: { border: "1px solid #c9b99b", padding: "4px", bg: "#ffffff" },
+      table: "plain",
+      extras: { hr: "dotted", postedBy: true }
+    },
+    "portal-1999": {
+      page: { bg: "#ffffff", bgImage: null, text: "#000000", font: "var(--font-arial)", size: "12px" },
+      link: { color: "#0000ee", visited: "#800080", hover: "#ff0000", decoration: "underline" },
+      heading: { font: "var(--font-arial)", color: "#000000", weight: "bold", sizeScale: 0.9 },
+      header: { bg: "#ffffff", bgImage: null, text: "#000000", border: "0", borderBottom: "2px solid #cccccc", padding: "6px 10px" },
+      nav: { bg: "#ffffcc", text: "#0000ee", border: "1px solid #cccccc", link: "plain", icon: "arrow-right", dense: true },
+      main: { bg: "#ffffff", text: "#000000", border: "0", padding: "8px" },
+      sidebar: { bg: "#ffffcc", text: "#000000", border: "1px solid #cccccc", padding: "6px", size: "11px" },
+      footer: { bg: "#ffffff", text: "#808080", border: "1px solid #cccccc", size: "10px" },
+      button: "flat-gray",
+      input: "flat",
+      image: { border: "1px solid #cccccc" },
+      table: "lines",
+      extras: { hr: "thin", categoryBars: true }
+    },
+    "matrix-terminal": {
+      page: { bg: "#000000", bgImage: null, text: "#00ff41", font: "var(--font-courier)", size: "13px" },
+      link: { color: "#00ff41", visited: "#008f11", hover: "#000000", hoverBg: "#00ff41", decoration: "none" },
+      heading: { font: "var(--font-courier)", color: "#00ff41", shadow: "0 0 6px #00ff41", transform: "uppercase", prefix: "> " },
+      header: { bg: "#000000", bgImage: null, text: "#00ff41", border: "1px solid #00ff41", padding: "8px 12px" },
+      nav: { bg: "#000000", text: "#00ff41", border: "1px dashed #008f11", link: "bracket", icon: null, font: "var(--font-courier)" },
+      main: { bg: "#000000", text: "#00ff41", border: "1px solid #008f11", padding: "12px" },
+      sidebar: { bg: "#001a00", text: "#00ff41", border: "1px solid #003b00", padding: "10px" },
+      footer: { bg: "#000000", text: "#008f11", border: "1px solid #003b00", font: "var(--font-courier)" },
+      button: "terminal",
+      input: "terminal",
+      image: { border: "1px solid #00ff41", filter: "grayscale(1) sepia(1) hue-rotate(60deg) saturate(3)" },
+      table: "terminal",
+      extras: { hr: "dashed", scanlines: true, cursorBlink: true }
+    },
+    "myspace-glitter": {
+      page: { bg: "#000000", bgImage: "var(--bg-tile-glitter)", text: "#ffffff", font: "var(--font-arial)", size: "13px" },
+      link: { color: "#ff69b4", visited: "#9900ff", hover: "#00ccff", decoration: "underline" },
+      heading: { font: "var(--font-arial-black)", color: "#ff69b4", rainbow: true, shadow: "1px 1px 0 #000000" },
+      header: { bg: "#ff69b4", bgImage: "var(--bg-tile-hearts)", text: "#000000", border: "3px solid #ffffff", padding: "10px 14px" },
+      nav: { bg: "#000000", text: "#ff69b4", border: "1px solid #ff69b4", link: "plain", icon: "heart", font: "var(--font-arial)" },
+      main: { bg: "rgba(0,0,0,.8)", text: "#ffffff", border: "2px solid #ff69b4", padding: "12px" },
+      sidebar: { bg: "#9900ff", text: "#ffffff", border: "2px solid #ffffff", padding: "10px" },
+      footer: { bg: "#ff69b4", text: "#000000", border: "0", font: "var(--font-comic)" },
+      button: "flat-pink",
+      input: "flat-dark",
+      image: { border: "3px solid #ff69b4" },
+      table: "dark",
+      extras: { hr: "rainbow", sparkleHeading: true, marquee: "\u2665 Thanks for the add! \u2665 Top 8 \u2665 Pics \u2665 Blog \u2665 Comments \u2665", counter: true }
+    },
+    "corporate-2001": {
+      page: { bg: "#e6e6e6", bgImage: null, text: "#333333", font: "var(--font-verdana)", size: "11px" },
+      link: { color: "#003366", visited: "#003366", hover: "#cc6600", decoration: "underline" },
+      heading: { font: "var(--font-verdana)", color: "#003366", weight: "bold", sizeScale: 0.85 },
+      header: { bg: "#003366", bgImage: "var(--grad-navy-header)", text: "#ffffff", border: "0", borderBottom: "3px solid #cc6600", padding: "10px 16px" },
+      nav: { bg: "#ffffff", text: "#003366", border: "1px solid #6699cc", link: "arrow", icon: "arrow-right", font: "var(--font-verdana)" },
+      main: { bg: "#ffffff", text: "#333333", border: "1px solid #cccccc", padding: "14px" },
+      sidebar: { bg: "#f4f7fb", text: "#333333", border: "1px solid #6699cc", padding: "10px" },
+      footer: { bg: "#003366", text: "#ffffff", border: "0", size: "10px" },
+      button: "flat-navy",
+      input: "flat",
+      image: { border: "1px solid #6699cc" },
+      table: "lines",
+      extras: { hr: "thin", categoryBars: true }
+    },
+    "flash-agency": {
+      page: { bg: "#111111", bgImage: null, text: "#dddddd", font: "var(--font-arial)", size: "13px" },
+      link: { color: "#ff6600", visited: "#ff6600", hover: "#ccff00", decoration: "none" },
+      heading: { font: "var(--font-impact)", color: "#ff6600", transform: "uppercase", spacing: "1px", weight: "normal" },
+      header: { bg: "#000000", bgImage: "var(--grad-glossy-black)", text: "#ffffff", border: "0", borderBottom: "3px solid #ff6600", padding: "12px 20px" },
+      nav: { bg: "transparent", text: "#ffffff", border: "0", link: "pill-dark", icon: "play" },
+      main: { bg: "#1c1c1c", text: "#dddddd", border: "1px solid #333333", padding: "18px", narrow: "960px" },
+      sidebar: { bg: "#222222", text: "#dddddd", border: "1px solid #ff6600", padding: "12px" },
+      footer: { bg: "#000000", text: "#999999", border: "1px solid #333333", size: "11px" },
+      button: "glossy-orange",
+      input: "flat-dark",
+      image: { border: "2px solid #ff6600" },
+      table: "dark",
+      extras: { hr: "orange", skipIntro: true }
+    },
+    "forum-phpbb": {
+      page: { bg: "#e5edf5", bgImage: "var(--bg-tile-plaid-blue)", text: "#333333", font: "var(--font-verdana)", size: "11px" },
+      link: { color: "#006699", visited: "#5c7099", hover: "#dd6900", decoration: "underline", weight: "bold" },
+      heading: { font: "var(--font-trebuchet)", color: "#006699", weight: "bold", sizeScale: 0.9 },
+      header: { bg: "#5c7099", bgImage: "var(--grad-navy-header)", text: "#ffffff", border: "1px solid #3d4f6e", padding: "8px 14px" },
+      nav: { bg: "#d3dce8", text: "#006699", border: "1px solid #5c7099", link: "bevel", icon: "chat", font: "var(--font-verdana)" },
+      main: { bg: "#ffffff", text: "#333333", border: "1px solid #a9b8c2", padding: "10px" },
+      sidebar: { bg: "#d3dce8", text: "#333333", border: "1px solid #a9b8c2", padding: "8px" },
+      footer: { bg: "#d3dce8", text: "#5c7099", border: "1px solid #a9b8c2", size: "10px" },
+      button: "bevel",
+      input: "inset",
+      image: { border: "1px solid #a9b8c2", padding: "2px", bg: "#ffffff" },
+      table: "forum",
+      extras: { hr: "thin", categoryBars: true, counter: true }
+    },
+    "kawaii-pixel": {
+      page: { bg: "#ffd1e8", bgImage: "var(--bg-tile-dots)", text: "#6b4c6b", font: "var(--font-verdana)", size: "12px" },
+      link: { color: "#ff8fc8", visited: "#b58fd6", hover: "#6b4c6b", decoration: "underline dotted" },
+      heading: { font: "var(--font-comic)", color: "#ff8fc8", shadow: "1px 1px 0 #ffffff", prefix: "\u2665 " },
+      header: { bg: "#ffffff", bgImage: "var(--bg-tile-hearts)", text: "#6b4c6b", border: "3px dotted #ff8fc8", radius: "14px", padding: "10px 14px" },
+      nav: { bg: "#fff6a8", text: "#6b4c6b", border: "2px dotted #ff8fc8", link: "pixel", icon: "heart", font: "var(--font-verdana)" },
+      main: { bg: "#ffffff", text: "#6b4c6b", border: "2px solid #ff8fc8", radius: "12px", padding: "14px", shadow: "4px 4px 0 #b8f3e6" },
+      sidebar: { bg: "#b8f3e6", text: "#6b4c6b", border: "2px dotted #6b4c6b", radius: "12px", padding: "10px" },
+      footer: { bg: "#ff8fc8", text: "#ffffff", border: "0", radius: "12px 12px 0 0", font: "var(--font-comic)" },
+      button: "pixel",
+      input: "rounded-pink",
+      image: { border: "3px solid #ffffff", radius: "10px", shadow: "3px 3px 0 #ff8fc8" },
+      table: "rounded",
+      extras: { hr: "hearts", counter: true, marquee: "\u2665 \u2665 \u2665 welcome to my page \u2665 \u2665 \u2665 don't forget to sign my guestbook \u2665 \u2665 \u2665" }
+    },
+    "aqua-osx": {
+      page: { bg: "#ececec", bgImage: "var(--bg-tile-pinstripe)", text: "#333333", font: "var(--font-lucida)", size: "13px" },
+      link: { color: "#3d7fe0", visited: "#3d7fe0", hover: "#1f5fbf", decoration: "none" },
+      heading: { font: "var(--font-lucida)", color: "#333333", weight: "bold", shadow: "0 1px 0 #ffffff" },
+      header: { bg: "#d6d6d6", bgImage: "var(--bg-tile-brushed-metal)", text: "#222222", border: "1px solid #9a9a9a", radius: "8px 8px 0 0", padding: "10px 16px", shadow: "0 1px 3px rgba(0,0,0,.3)" },
+      nav: { bg: "transparent", text: "#222222", border: "0", link: "aqua", icon: "globe" },
+      main: { bg: "#ffffff", text: "#333333", border: "1px solid #cfcfcf", radius: "8px", padding: "16px", shadow: "0 3px 10px rgba(0,0,0,.2)" },
+      sidebar: { bg: "#f3f6fb", text: "#333333", border: "1px solid #cfcfcf", radius: "8px", padding: "12px" },
+      footer: { bg: "#d6d6d6", bgImage: "var(--bg-tile-brushed-metal)", text: "#444444", border: "1px solid #9a9a9a", size: "11px" },
+      button: "aqua",
+      input: "rounded",
+      image: { border: "1px solid #cfcfcf", radius: "6px", shadow: "0 2px 5px rgba(0,0,0,.25)" },
+      table: "rounded",
+      extras: { hr: "soft", trafficLights: true }
+    }
+  };
+
+  // userscript/src/packs/render.js
+  var ICON_WORDS = [
+    [/\b(home|start|index|main page)\b/i, "home"],
+    [/\b(search|find)\b/i, "search"],
+    [/\b(contact|mail|e-?mail|write us|inbox)\b/i, "mail"],
+    [/\b(shop|store|cart|basket|checkout|buy|products?|pricing|prices?|order)\b/i, "cart"],
+    [/\b(log ?in|sign ?in|sign ?up|register|account|profile|members?|my page|user)\b/i, "user"],
+    [/\b(about|team|company|who we are|info)\b/i, "info"],
+    [/\b(help|faq|support|questions?)\b/i, "info"],
+    [/\b(archives?|categories|category|browse|directory|folders?|collections?)\b/i, "folder"],
+    [/\b(download|install|get it)\b/i, "download"],
+    [/\b(docs?|documentation|guides?|manual|reference|learn|tutorials?|wiki)\b/i, "file"],
+    [/\b(blog|news|posts?|articles?|stories|journal|writing)\b/i, "file"],
+    [/\b(music|audio|songs?|podcasts?|radio)\b/i, "music"],
+    [/\b(photos?|gallery|images?|pictures?|pics)\b/i, "image"],
+    [/\b(videos?|watch|play|movies?|tv|streams?)\b/i, "play"],
+    [/\b(links?|webring|friends)\b/i, "link"],
+    [/\b(rss|feed|subscribe|newsletter)\b/i, "rss"],
+    [/\b(forums?|community|chat|discussions?|comments?|talk|guestbook)\b/i, "chat"],
+    [/\b(events?|calendar|schedule|dates?|upcoming)\b/i, "calendar"],
+    [/\b(settings|preferences|options|config|tools)\b/i, "gear"],
+    [/\b(new|latest|recent|newest)\b/i, "new"],
+    [/\b(popular|trending|hot|top|best)\b/i, "hot"],
+    [/\b(favou?rites?|starred|featured)\b/i, "star"],
+    [/\b(security|privacy|legal|terms|secure|password)\b/i, "lock"],
+    [/\b(world|international|languages?|global|countries|english|español|deutsch)\b/i, "globe"],
+    [/\b(print)\b/i, "print"],
+    [/\b(tags?|topics?|labels?)\b/i, "tag"],
+    [/\b(bookmarks?|saved|reading list|later)\b/i, "bookmark"],
+    [/\b(back|previous|prev|older)\b/i, "arrow-left"],
+    [/\b(next|more|continue|newer|all)\b/i, "arrow-right"],
+    [/\b(menu)\b/i, "menu"],
+    [/\b(history|time|clock|past|yesterday)\b/i, "clock"],
+    [/\b(love|like|heart|wishlist)\b/i, "heart"],
+    [/\b(ok|done|submit|save|apply|go|send|confirm)\b/i, "check"],
+    [/\b(close|cancel|delete|remove|clear|reset)\b/i, "close"],
+    [/\b(warning|alert|important|notice)\b/i, "warning"]
+  ];
+  function iconForText(text, href = "", fallback = null) {
+    const hay = `${text || ""} ${String(href || "").replace(/^https?:\/\/[^/]+/, "").replace(/[/._?=&#-]+/g, " ")}`;
+    for (const [re, icon] of ICON_WORDS) if (re.test(hay)) return icon;
+    return fallback;
+  }
+  var each = (list, suffix) => splitSelectorList(list).map((s) => s + suffix).join(", ");
+  var esc = (v) => String(v).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  var decl = (prop, v) => v == null || v === "" ? "" : `${prop}: ${v}; `;
+  var box = (t) => decl("background-color", t.bg) + decl("background-image", t.bgImage || (t.bg ? "none" : null)) + decl("color", t.text) + decl("border", t.border) + decl("border-bottom", t.borderBottom) + decl("border-radius", t.radius) + decl("box-shadow", t.shadow) + decl("padding", t.padding) + decl("font-family", t.font && t.font.startsWith("var") ? t.font : null) + decl("font", t.font && !t.font.startsWith("var") ? t.font : null) + decl("font-size", t.size);
+  var ICON_SLOT = "background-repeat: no-repeat; background-position: 4px center; background-size: 16px 16px; padding-left: 24px; ";
+  var NAV_LINK = {
+    bevel: (T) => `display: inline-block; background-color: #c0c0c0; color: ${T.nav.text}; border: 2px outset #ffffff; padding: 2px 8px 2px 24px; margin: 2px; text-decoration: none; font-weight: bold; `,
+    glossy: () => `display: inline-block; background-image: var(--grad-glossy-blue); color: #ffffff; text-shadow: 0 -1px 0 rgba(0,0,0,.35); border: 1px solid #1a5a99; border-radius: 6px; box-shadow: var(--glossy-shadow); padding: 5px 12px 5px 26px; margin: 2px; text-decoration: none; font-weight: bold; `,
+    pill: () => `display: inline-block; background-image: var(--grad-chrome); color: #101020; border: 1px solid #777777; border-radius: 999px; padding: 4px 14px 4px 26px; margin: 2px; text-decoration: none; font-weight: bold; text-transform: uppercase; font-size: 11px; letter-spacing: 1px; `,
+    "pill-dark": () => `display: inline-block; background-image: var(--grad-glossy-black); color: #ffffff; border: 1px solid #000000; border-radius: 999px; padding: 4px 14px 4px 26px; margin: 2px; text-decoration: none; text-transform: uppercase; font-size: 11px; letter-spacing: 1px; `,
+    plain: (T) => `display: inline-block; color: ${T.nav.text}; text-decoration: underline; padding: 2px 6px 2px 24px; margin: 1px; `,
+    arrow: (T) => `display: inline-block; color: ${T.nav.text}; text-decoration: none; padding: 2px 6px 2px 24px; margin: 1px; font-weight: bold; `,
+    bracket: (T) => `display: inline-block; color: ${T.nav.text}; text-decoration: none; padding: 2px 6px; margin: 1px; `,
+    pixel: (T) => `display: inline-block; background-color: #ffffff; color: ${T.nav.text}; border: 2px solid #6b4c6b; border-radius: 0; box-shadow: 2px 2px 0 #ff8fc8; padding: 2px 8px 2px 24px; margin: 3px; text-decoration: none; `,
+    aqua: () => `display: inline-block; background-image: var(--grad-aqua); color: #0b2a55; border: 1px solid #7fa6dc; border-radius: 999px; box-shadow: var(--glossy-shadow); padding: 4px 12px 4px 26px; margin: 2px; text-decoration: none; font-weight: bold; `
+  };
+  var BUTTON = {
+    bevel: `background-color: #c0c0c0; background-image: none; color: #000000; border: 2px outset #ffffff; border-radius: 0; box-shadow: none; text-shadow: none; font-family: var(--font-ms-sans); font-size: 12px; padding: 3px 12px; `,
+    "glossy-blue": `background-image: var(--grad-glossy-blue); background-color: #3b8dd6; color: #ffffff; text-shadow: 0 -1px 0 rgba(0,0,0,.35); border: 1px solid #1a5a99; border-radius: 6px; box-shadow: var(--glossy-shadow); font-family: var(--font-lucida); font-weight: bold; padding: 6px 16px; `,
+    "glossy-green": `background-image: var(--grad-glossy-green); background-color: #8cc63f; color: #ffffff; text-shadow: 0 -1px 0 rgba(0,0,0,.35); border: 1px solid #5c8a1f; border-radius: 6px; box-shadow: var(--glossy-shadow); font-family: var(--font-lucida); font-weight: bold; padding: 6px 16px; `,
+    "glossy-orange": `background-image: var(--grad-glossy-orange); background-color: #f7941d; color: #ffffff; text-shadow: 0 -1px 0 rgba(0,0,0,.35); border: 1px solid #b35f00; border-radius: 6px; box-shadow: var(--glossy-shadow); font-family: var(--font-arial); font-weight: bold; text-transform: uppercase; padding: 6px 16px; `,
+    pill: `background-image: var(--grad-chrome); background-color: #c0c0c0; color: #101020; border: 1px solid #777777; border-radius: 999px; box-shadow: 0 0 8px rgba(0,229,255,.6); font-family: var(--font-verdana); font-weight: bold; text-transform: uppercase; padding: 5px 16px; `,
+    "flat-earth": `background-color: #8a6d3b; background-image: none; color: #ffffff; border: 1px solid #5a6b4a; border-radius: 3px; box-shadow: none; font-family: var(--font-verdana); padding: 4px 12px; `,
+    "flat-gray": `background-color: #eeeeee; background-image: none; color: #000000; border: 1px solid #999999; border-radius: 0; box-shadow: none; font-family: var(--font-arial); font-size: 11px; padding: 2px 8px; `,
+    "flat-navy": `background-color: #003366; background-image: none; color: #ffffff; border: 1px solid #003366; border-radius: 0; box-shadow: none; font-family: var(--font-verdana); font-size: 11px; font-weight: bold; padding: 3px 10px; `,
+    "flat-pink": `background-color: #ff69b4; background-image: none; color: #000000; border: 2px solid #ffffff; border-radius: 0; box-shadow: none; font-family: var(--font-arial); font-weight: bold; padding: 4px 12px; `,
+    terminal: `background-color: #000000; background-image: none; color: #00ff41; border: 1px solid #00ff41; border-radius: 0; box-shadow: none; font-family: var(--font-courier); text-transform: uppercase; padding: 3px 10px; `,
+    pixel: `background-color: #fff6a8; background-image: none; color: #6b4c6b; border: 2px solid #6b4c6b; border-radius: 0; box-shadow: 2px 2px 0 #ff8fc8; font-family: var(--font-verdana); font-weight: bold; padding: 3px 10px; `,
+    aqua: `background-image: var(--grad-aqua); background-color: #5e95e0; color: #ffffff; text-shadow: 0 1px 1px rgba(0,0,0,.4); border: 1px solid #5e95e0; border-radius: 999px; box-shadow: var(--glossy-shadow); font-family: var(--font-lucida); font-weight: bold; padding: 5px 16px; `
+  };
+  var BUTTON_HOVER = {
+    bevel: "border-style: inset; ",
+    terminal: "background-color: #00ff41; color: #000000; ",
+    "flat-navy": "background-color: #cc6600; border-color: #cc6600; ",
+    "flat-pink": "background-color: #00ccff; ",
+    "flat-earth": "background-color: #5a6b4a; ",
+    "flat-gray": "background-color: #ffffcc; "
+  };
+  var INPUT = {
+    inset: `background-color: #ffffff; color: #000000; border: 2px inset #ffffff; border-radius: 0; box-shadow: var(--win-shadow-in); font-family: var(--font-ms-sans); padding: 2px 4px; `,
+    rounded: `background-color: #ffffff; color: #333333; border: 1px solid #aabbdd; border-radius: 6px; box-shadow: inset 0 1px 2px rgba(0,0,0,.12); padding: 4px 8px; `,
+    "rounded-pink": `background-color: #ffffff; color: #6b4c6b; border: 2px dotted #ff8fc8; border-radius: 8px; box-shadow: none; padding: 3px 8px; `,
+    flat: `background-color: #ffffff; color: #000000; border: 1px solid #999999; border-radius: 0; box-shadow: none; padding: 2px 4px; `,
+    "flat-dark": `background-color: #111111; color: #eeeeee; border: 1px solid #555555; border-radius: 2px; box-shadow: none; padding: 3px 6px; `,
+    dotted: `background-color: #ffffff; color: #333333; border: 1px dotted #8a6d3b; border-radius: 0; box-shadow: none; padding: 3px 6px; `,
+    terminal: `background-color: #000000; color: #00ff41; border: 1px solid #008f11; border-radius: 0; box-shadow: none; font-family: var(--font-courier); caret-color: #00ff41; padding: 2px 6px; `
+  };
+  var HR = {
+    rainbow: "border: 0; height: 4px; background-image: var(--grad-rainbow); ",
+    soft: "border: 0; height: 1px; background-color: #cfdcea; ",
+    neon: "border: 0; height: 2px; background-color: #00e5ff; box-shadow: 0 0 8px #00e5ff; ",
+    groove: "border: 0; border-top: 1px solid #808080; border-bottom: 1px solid #ffffff; height: 0; ",
+    dotted: "border: 0; border-top: 1px dotted #8a6d3b; height: 0; ",
+    thin: "border: 0; border-top: 1px solid #cccccc; height: 0; ",
+    dashed: "border: 0; border-top: 1px dashed #008f11; height: 0; ",
+    orange: "border: 0; height: 3px; background-color: #ff6600; ",
+    hearts: "border: 0; height: 14px; background-image: var(--bg-tile-hearts); background-repeat: repeat-x; "
+  };
+  function tableCss(kind, S) {
+    switch (kind) {
+      case "bevel":
+        return [`${S.tables} { background-color: #ffffff; color: #000000; border: 2px inset #ffffff; border-collapse: separate; }`, `${S.tables} th { background-color: #000080; color: #ffffff; border: 1px solid #c0c0c0; }`, `${S.tables} td { border: 1px solid #c0c0c0; }`];
+      case "forum":
+        return [`${S.tables} { background-color: #ffffff; color: #333333; border: 1px solid #a9b8c2; }`, `${S.tables} th { background-image: var(--grad-navy-header); background-color: #5c7099; color: #ffffff; border: 1px solid #3d4f6e; }`, `${S.tables} td { border: 1px solid #d3dce8; }`, `${S.tables} tr:nth-child(even) td { background-color: #e5edf5; }`];
+      case "dark":
+        return [`${S.tables} { background-color: #111111; color: #dddddd; border: 1px solid #444444; }`, `${S.tables} th { background-color: #222222; color: #ffffff; border: 1px solid #444444; }`, `${S.tables} td { border: 1px solid #333333; }`];
+      case "terminal":
+        return [`${S.tables} { background-color: #000000; color: #00ff41; border: 1px solid #00ff41; }`, `${S.tables} th, ${S.tables} td { border: 1px dashed #008f11; }`];
+      case "rounded":
+        return [`${S.tables} { background-color: #ffffff; color: #333333; border: 1px solid #cfdcea; border-radius: 8px; }`, `${S.tables} th { background-color: #e8f1fa; color: #1f6fbf; border-bottom: 2px solid #cfdcea; }`, `${S.tables} td { border-bottom: 1px solid #eef3f8; }`];
+      case "lines":
+        return [`${S.tables} { background-color: #ffffff; color: #000000; border: 1px solid #cccccc; }`, `${S.tables} th { background-color: #eeeeee; color: #000000; border: 1px solid #cccccc; }`, `${S.tables} td { border: 1px solid #dddddd; }`];
+      default:
+        return [`${S.tables} th { border-bottom: 1px solid #c9b99b; color: #5a6b4a; }`, `${S.tables} td { border-bottom: 1px dotted #c9b99b; }`];
+    }
+  }
+  function selectorsFromSummary(data = {}) {
+    const landmarks = data.landmarks || [];
+    const sel = (role, fallback) => {
+      const ls2 = landmarks.filter((l) => l.role === role).map((l) => l.selector);
+      return ls2.length ? [...new Set(ls2)].join(", ") : fallback;
+    };
+    const nav = sel("nav", "nav, [role=navigation]");
+    const buttons = [.../* @__PURE__ */ new Set([...(data.buttons || []).map((b) => b.selector), "button", "input[type=submit]", "input[type=button]", "[role=button]"])].join(", ");
+    return {
+      header: sel("header", "header, [role=banner]"),
+      nav,
+      navLinks: each(nav, " a"),
+      main: sel("main", "main, [role=main], #content, article"),
+      sidebar: sel("sidebar", "aside, [role=complementary]"),
+      footer: sel("footer", "footer, [role=contentinfo]"),
+      search: sel("search", "form[role=search]"),
+      buttons,
+      inputs: "input:not([type=submit]):not([type=button]):not([type=checkbox]):not([type=radio]):not([type=hidden]):not([type=range]):not([type=file]):not([type=color]), select, textarea",
+      headings: "h1, h2, h3, h4, h5, h6",
+      tables: "table"
+    };
+  }
+  function renderPack(styleId, data = {}, { maxNavIcons = 16 } = {}) {
+    const T = THEMES[styleId];
+    if (!T) return { css: "", applyClass: [], styleId, notes: ["unknown style"] };
+    const S = selectorsFromSummary(data);
+    const R = [];
+    const applyClass = [];
+    const push = (sel, body) => body.trim() && R.push(`${sel} { ${body.trim()} }`);
+    push("body", decl("background-color", T.page.bg) + decl("background-image", T.page.bgImage || "none") + decl("background-repeat", T.page.bgRepeat) + decl("background-attachment", T.page.bgImage ? "fixed" : null) + decl("color", T.page.text) + decl("font-family", T.page.font) + decl("font-size", T.page.size) + decl("cursor", T.page.cursor));
+    push("a", decl("color", T.link.color) + decl("text-decoration", T.link.decoration || "underline") + decl("font-weight", T.link.weight));
+    push("a:visited", decl("color", T.link.visited));
+    push("a:hover", decl("color", T.link.hover) + decl("background-color", T.link.hoverBg));
+    const H = T.heading;
+    let shadow = H.shadow;
+    if (H.rainbow) shadow = "2px 2px 0 #ff00ff, 4px 4px 0 #00ffff, 6px 6px 0 #ffff00";
+    push(S.headings, decl("font-family", H.font) + decl("color", H.color) + decl("text-shadow", shadow) + decl("text-transform", H.transform) + decl("letter-spacing", H.spacing) + decl("font-weight", H.weight) + decl("font-style", H.style) + "background-image: none; ");
+    if (H.sizeScale) push("h1", `font-size: ${Math.round(28 * H.sizeScale)}px; `) && push("h2", `font-size: ${Math.round(20 * H.sizeScale)}px; `) && push("h3", `font-size: ${Math.round(16 * H.sizeScale)}px; `);
+    if (H.prefix) push(each(S.headings, "::before"), `content: "${esc(H.prefix)}"; `);
+    push(S.header, box(T.header));
+    push(each(S.header, " a") + ", " + each(S.header, " a:visited"), decl("color", T.header.text || "inherit"));
+    push(S.nav, box({ bg: T.nav.bg === "transparent" ? null : T.nav.bg, text: T.nav.text, border: T.nav.border, padding: T.nav.dense ? "2px 4px" : "4px 6px", font: T.nav.font }));
+    const linkStyle = NAV_LINK[T.nav.link] || NAV_LINK.plain;
+    push(S.navLinks + ", " + each(S.navLinks, ":visited"), linkStyle(T) + (T.nav.icon ? ICON_SLOT : ""));
+    if (T.nav.link === "bevel") push(each(S.navLinks, ":active"), "border-style: inset; ");
+    if (T.nav.link === "bracket") {
+      push(each(S.navLinks, "::before"), 'content: "["; color: #008f11; ');
+      push(each(S.navLinks, "::after"), 'content: "]"; color: #008f11; ');
+    }
+    if (T.nav.icon) {
+      const seen = /* @__PURE__ */ new Set();
+      let n = 0;
+      for (const l of data.navLinks || []) {
+        if (!l.href || seen.has(l.nav + "|" + l.href) || n >= maxNavIcons) continue;
+        seen.add(l.nav + "|" + l.href);
+        const icon = iconForText(l.text, l.href, T.nav.icon);
+        push(`${l.nav} a[href="${esc(l.href)}"]`, `background-image: var(--icon-${icon}); `);
+        n++;
+      }
+      push(S.navLinks, `background-image: var(--icon-${T.nav.icon}); `);
+      const def = R.pop();
+      R.splice(R.length - n, 0, def);
+    }
+    push(S.main, box({ ...T.main, bgImage: T.main.bgImage || "none" }) + (T.main.narrow ? `max-width: ${T.main.narrow}; margin-left: auto; margin-right: auto; ` : ""));
+    push(S.sidebar, box({ ...T.sidebar, bgImage: "none" }));
+    push(each(S.sidebar, " > div") + ", " + each(S.sidebar, " > section") + ", " + each(S.sidebar, " > ul"), decl("background-color", T.sidebar.bg) + decl("color", T.sidebar.text) + decl("border", T.sidebar.border) + decl("border-radius", T.sidebar.radius) + "box-shadow: none; ");
+    push(each(S.sidebar, " a") + ", " + each(S.sidebar, " a:visited"), decl("color", T.link.color));
+    push(S.footer, box({ ...T.footer, padding: T.footer.padding || "10px 14px" }));
+    push(each(S.footer, " a") + ", " + each(S.footer, " a:visited"), decl("color", T.footer.text));
+    push(S.buttons, BUTTON[T.button] || BUTTON.bevel);
+    if (BUTTON_HOVER[T.button]) push(each(S.buttons, ":hover"), BUTTON_HOVER[T.button]);
+    for (const b of (data.buttons || []).slice(0, 8)) {
+      const icon = b.text && b.text.length <= 24 ? iconForText(b.text, "", null) : null;
+      if (icon) push(b.selector, `background-image: var(--icon-${icon}); background-repeat: no-repeat; background-position: 6px center; background-size: 16px 16px; padding-left: 26px; `);
+    }
+    push(S.inputs, INPUT[T.input] || INPUT.flat);
+    const I = T.image;
+    push("img", decl("border", I.border) + decl("border-radius", I.radius) + decl("box-shadow", I.shadow) + decl("padding", I.padding) + decl("background-color", I.bg) + decl("filter", I.filter));
+    R.push(...tableCss(T.table, S));
+    if (T.table === "forum") applyClass.push({ selector: "table", className: "retro-table-rows" });
+    const X = T.extras || {};
+    if (X.hr && HR[X.hr]) push("hr", HR[X.hr]);
+    if (X.bullets) push("li", `list-style: none; background-image: var(--icon-${X.bullets}); background-repeat: no-repeat; background-position: 0 3px; background-size: 12px 12px; padding-left: 16px; `);
+    if (X.counter) push(each(S.footer, "::before"), 'content: "You are visitor number 0013370"; display: block; grid-column: 1 / -1; flex: 1 1 100%; width: max-content; max-width: 100%; margin: 0 auto 8px auto; background-color: #000000; color: #00ff00; font-family: var(--font-courier); font-weight: bold; font-size: 14px; letter-spacing: 2px; border: 2px inset #808080; padding: 2px 8px; text-shadow: 0 0 4px #00ff00; ');
+    if (X.underConstruction) push(each(S.main, "::before"), 'content: "UNDER CONSTRUCTION"; display: block; grid-column: 1 / -1; flex: 1 1 100%; width: 100%; height: auto; align-self: start; box-sizing: border-box; background-image: var(--bg-tile-hazard); background-color: #ffcc00; color: #000000; font-family: var(--font-arial-black); font-weight: bold; font-size: 12px; letter-spacing: 2px; line-height: 1.4; text-align: center; padding: 3px; margin-bottom: 10px; text-shadow: 1px 1px 0 #ffcc00, -1px -1px 0 #ffcc00, 1px -1px 0 #ffcc00, -1px 1px 0 #ffcc00; ');
+    if (X.marquee) {
+      push(each(S.header, "::after"), `content: "${esc(X.marquee)}"; display: block; grid-column: 1 / -1; flex: 1 1 100%; width: 100%; box-sizing: border-box; overflow: hidden; white-space: nowrap; text-indent: 100%; animation: retro-marquee-text 22s linear infinite; font-family: var(--font-verdana); font-weight: bold; font-size: 12px; color: #ffff00; background-color: #000000; padding: 2px 0; margin-top: 6px; `);
+      R.push("@keyframes retro-marquee-text { from { text-indent: 100%; } to { text-indent: -150%; } }");
+    }
+    if (X.badge) push(each(S.header, "::after"), `content: "${esc(X.badge)}"; display: inline-block; background-image: var(--grad-glossy-orange); color: #ffffff; font-family: var(--font-trebuchet); font-weight: bold; font-size: 10px; padding: 2px 7px; border-radius: 8px; margin-left: 8px; vertical-align: middle; text-shadow: 0 -1px 0 rgba(0,0,0,.3); `);
+    if (X.statusBar) push(each(S.footer, "::after"), 'content: "Done                                          My Computer"; display: block; white-space: pre; border: 1px inset #ffffff; background-color: #c0c0c0; color: #000000; padding: 2px 6px; margin-top: 6px; font-family: var(--font-ms-sans); font-size: 11px; ');
+    if (X.scanlines) push("body::after", 'content: ""; position: fixed; inset: 0; pointer-events: none; background-image: var(--bg-tile-scanlines); z-index: 2147483000; ');
+    if (X.cursorBlink) push("h1::after", 'content: "_"; animation: retro-blink 1s steps(2, start) infinite; ');
+    if (X.skipIntro) push(each(S.header, "::after"), 'content: "skip intro \u25B8"; float: right; font-family: var(--font-arial); font-size: 11px; color: #ccff00; text-transform: lowercase; ');
+    if (X.trafficLights) push(each(S.header, "::before"), 'content: ""; display: inline-block; width: 12px; height: 12px; border-radius: 50%; background-color: #ff5f57; box-shadow: 18px 0 0 #febc2e, 36px 0 0 #28c840; margin-right: 44px; vertical-align: middle; ');
+    if (X.categoryBars) push("h2, h3", `background-color: ${T.nav.bg === "transparent" ? "#eeeeee" : T.nav.bg}; color: ${T.heading.color}; padding: 2px 6px; border-left: 6px solid ${T.link.hover}; `);
+    if (X.sparkleHeading) push("h1", "background-image: var(--bg-tile-glitter); ");
+    return { css: R.join("\n"), applyClass, styleId, selectors: S };
+  }
+  function listPackStyles() {
+    return Object.keys(THEMES);
   }
   return __toCommonJS(lib_exports);
 })();

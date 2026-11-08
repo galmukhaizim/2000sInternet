@@ -32,6 +32,9 @@ userscript/
       library.css             TOOLKIT (not a theme): custom properties + utility classes
       manifest.json           name/type/description of every asset (goes in the prompt)
       icons/*.svg, backgrounds/*.svg, cursors/*.svg   hand-made inline assets
+    packs/
+      themes.js               one hand-made theme per sub-style (colors, fonts, textures, control styles, extras)
+      render.js               theme + page summary -> instant base CSS (nav icons by link text, decorations)
     model/
       engine.js               transport to the model host iframe (postMessage protocol)
       designer.js             prompt building, streaming design generation, directive parsing
@@ -60,6 +63,15 @@ training/                     Python pipeline (scrape, teacher dataset, repair d
 
 ## Architecture decisions (keep consistent)
 
+0. **Hybrid design flow** (`settings.designMode`, default `hybrid`). The page
+   summary feeds a hand-made **style pack** (`packs/`) that applies instantly and
+   is cached at once; the model then adds 10–20 site-specific rules on top
+   (`generateDesign({ enhance: true })`, compact manifest, ≤700 tokens) and runs
+   one repair round. `pack` mode skips the model entirely (works with no GPU, on
+   CSP-blocked sites, in the eval harness); `model` mode is the original
+   model-writes-everything behaviour. Themes use only library assets and plain
+   colors and must pass the validator unchanged (packs.test.js renders every
+   theme on every fixture).
 1. **Model host iframe.** WebLLM runs inside a hidden `<iframe>` whose `src` is a
    fixed origin (`settings.hostUrl`, default the GitHub Pages site
    `https://galmukhaizim.github.io/2000sInternet/host/`, or `http://localhost:4173/`

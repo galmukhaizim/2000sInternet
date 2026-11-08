@@ -1,6 +1,6 @@
 {
   "name": "retro-web",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "Tampermonkey userscript that redesigns any website in a 2000s internet aesthetic using an in-browser small language model",
   "type": "module",

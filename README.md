@@ -14,18 +14,27 @@ follow.
 ## How it works
 
 ```
-page ──► summarize.js ──► designer model (WebLLM, in a hidden iframe on a fixed origin)
+page ──► summarize.js ──► style pack (hand-made theme for the chosen 2000s sub-style,
+                           instant: fonts, textures, colors, bevel/glossy controls,
+                           nav icons matched to link text, counter, marquee…)
+                               │
+                               ▼  (hybrid mode, in the background)
+                         designer model (WebLLM, hidden frame or popup on a fixed origin)
+                           adds 10–20 site-specific rules: cards, posts, badges, icons
                                │  streams CSS + /* icon-request */ + /* apply-class */
                                ▼
-                         validate.js ──► apply.js (constructed stylesheets, !important)
+                         validate.js (layout guard rails) ──► apply.js (constructed sheets)
                                │
             icons/ (library → cache → Claude API → placeholder)
                                │
-              repair/inspect.js ──► issue report ──► model patch ──► validate ──► apply
-                               │  (up to N rounds, then deterministic fallbacks)
+              repair/inspect.js ──► issue report ──► model patch ──► deterministic fallbacks
                                ▼
                    per-domain cache (GM storage) · control panel
 ```
+
+**Modes** (panel → Advanced → Mode): *style pack + model touches* (default),
+*style pack only* (instant, no GPU, works everywhere), *model writes everything*
+(the original slow behaviour, for comparing models).
 
 ## Install (one click)
 
@@ -93,19 +102,23 @@ build to the browser instead:
 4. In the panel's **Advanced** section set **Host URL** to
    `https://<codespace>-4173.app.github.dev/` and save.
 
-### What to expect on complex web apps
+### What to expect
 
-The validator keeps designs from breaking pages: broad selectors (bare tags,
-classes used everywhere) may only change colors, backgrounds, borders and
-fonts; layout properties (display, position, size, flex/grid, overflow) are
-allowed only on selectors matching a few dozen elements; video players,
-iframes and their containers are never moved or resized; flex/grid containers
-cannot be turned into blocks. Even so, app-like sites (YouTube, Gmail, web
-apps with thousands of nested components) get a cosmetic reskin at best from a
-1.5B model, while blogs, docs, shops, forums and portals get full redesigns. If
-a site still looks wrong, **Original** restores it and **Enabled on this site**
-turns retro-web off there. Better designs come from a fine-tuned model
-(`training/`).
+The style pack applies in well under a second and already carries the look:
+background textures, era fonts, link colors, bevel or glossy buttons, inset
+fields, nav icons chosen from the link text (Home → house, Contact → envelope,
+Shop → cart …), bordered images, and per-style extras (visitor counter,
+under-construction bar, marquee, scanlines, BETA badge, Aqua traffic lights).
+The model then spends 15–30 s adding rules for the site's own elements (cards,
+posts, badges, prices) and one repair round; the page is usable throughout.
+
+The validator keeps designs from breaking pages: broad selectors may only
+change colors, backgrounds, borders and fonts; layout properties are allowed
+only on selectors matching a few dozen elements; video players, iframes and
+their containers are never moved or resized; flex/grid containers cannot be
+turned into blocks. App-like sites (YouTube, Gmail) therefore get a reskin
+rather than a new layout. If a site still looks wrong, **Original** restores
+it and **Enabled on this site** turns retro-web off there.
 
 ### Sites with a strict Content Security Policy
 

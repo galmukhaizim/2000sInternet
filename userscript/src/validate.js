@@ -476,7 +476,7 @@ function validateDeclaration(d, ctx, out) {
   }
 
   if (!ctx.keyframes && !ctx.fontFace) {
-    const kind = hidingKind(prop, value);
+    const kind = ctx.pseudo ? null : hidingKind(prop, value);
     if (kind) {
       const t = ctx.targets();
       if (t.protected || t.landmark || t.interactive || t.count > 3 || t.textLength > 200) return drop('hides-content:' + kind);
@@ -485,10 +485,11 @@ function validateDeclaration(d, ctx, out) {
       const v = value.toLowerCase();
       const t = ctx.targets();
       if (t.protected) return drop('protected');
-      if (v === 'fixed' && (t.count > 3 || t.landmark)) return drop('position-fixed-too-broad');
-      if (v === 'absolute' && (t.count > 25 || t.landmark)) return drop('position-absolute-too-broad');
+      // decorative pseudo-elements (overlays, badges) may be fixed/absolute on landmarks
+      if (v === 'fixed' && (t.count > 3 || (t.landmark && !ctx.pseudo))) return drop('position-fixed-too-broad');
+      if (v === 'absolute' && (t.count > 25 || (t.landmark && !ctx.pseudo))) return drop('position-absolute-too-broad');
     }
-    if (prop === 'pointer-events' && /none/i.test(value)) {
+    if (prop === 'pointer-events' && /none/i.test(value) && !ctx.pseudo) {
       const t = ctx.targets();
       if (t.count > 20 || t.landmark || t.interactive) return drop('pointer-events-too-broad');
     }
@@ -508,7 +509,7 @@ function validateDeclaration(d, ctx, out) {
       if (isLayout) {
         if (t.count > ctx.maxLayoutMatches) return drop('layout-too-broad');
         if (t.mediaParent && MEDIA_CONTAINER_RISKY.test(prop)) return drop('media-container');
-        if (prop === 'display') {
+        if (prop === 'display' && !ctx.pseudo) {
           const v = value.trim().toLowerCase();
           if (t.root && v !== 'block') return drop('display-on-root');
           if (t.flexGrid && !/^(flex|inline-flex|grid|inline-grid|contents|table.*)$/.test(v)) return drop('display-breaks-layout');
@@ -627,6 +628,8 @@ export function validateCss(text, options = {}) {
         forceImportant,
         maxLayoutMatches,
         maxSpacingMatches,
+        // every part targets a generated pseudo-element (decorations, not content)
+        pseudo: !inKeyframes && selectorParts.every((p) => /::?(before|after|marker)(?![\w-])/.test(p)),
         targets: () => targetsCache || (targetsCache = classifyTargets(doc, probes.length ? probes : selectorParts.map(probeSelector), 400)),
       };
       if (node.declarations.length > maxDecls) out.warnings.push(`truncated declarations for ${selector}`);

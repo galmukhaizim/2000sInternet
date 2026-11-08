@@ -38,6 +38,19 @@ export function manifestToPrompt() {
   ].join('\n');
 }
 
+// Shorter variant for the hybrid flow (the pack already uses the library;
+// the model only needs the names).
+export function manifestToPromptCompact() {
+  const names = (items) => items.map((i) => i.name).join(', ');
+  return [
+    'ASSET LIBRARY (use by name):',
+    `icons background-image:var(--icon-NAME): ${names(MANIFEST.icons)}.`,
+    `backgrounds var(--bg-NAME): ${names(MANIFEST.backgrounds)}. gradients var(--grad-NAME): ${names(MANIFEST.gradients)}.`,
+    `fonts var(--font-NAME): ${names(MANIFEST.fonts)}. recipes: ${names(MANIFEST.recipes)}.`,
+    `component classes via /* apply-class: SELECTOR | CLASS */: ${names(MANIFEST.components)}.`,
+  ].join('\n');
+}
+
 // Rough token estimate used for all budgets (≈4 chars per token for English/CSS).
 export function estimateTokens(text) {
   return Math.ceil(String(text || '').length / 4);

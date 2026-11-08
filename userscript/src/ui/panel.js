@@ -110,6 +110,9 @@ export function createPanel({ doc = document, styles = [], settings, site, hasKe
   const modelInput = el('input', { type: 'text', value: settings.modelId });
   const hostInput = el('input', { type: 'text', value: settings.hostUrl });
   const roundsInput = el('input', { type: 'number', min: '0', max: '6', value: String(settings.maxRepairRounds) });
+  const modeSel = el('select');
+  for (const [v, label] of [['hybrid', 'style pack + model touches'], ['pack', 'style pack only (instant, no GPU)'], ['model', 'model writes everything (slow)']]) modeSel.appendChild(el('option', { value: v, text: label }));
+  modeSel.value = settings.designMode || 'hybrid';
   const autoInput = el('input', { type: 'checkbox' });
   autoInput.checked = !!settings.autoDesign;
   const iconModelInput = el('input', { type: 'text', value: settings.iconModel });
@@ -123,6 +126,7 @@ export function createPanel({ doc = document, styles = [], settings, site, hasKe
         modelId: modelInput.value.trim(),
         hostUrl: hostInput.value.trim(),
         maxRepairRounds: Math.max(0, Math.min(6, parseInt(roundsInput.value, 10) || 0)),
+        designMode: modeSel.value,
         autoDesign: autoInput.checked,
         iconModel: iconModelInput.value.trim(),
         customModelUrl: customUrlInput.value.trim(),
@@ -159,6 +163,8 @@ export function createPanel({ doc = document, styles = [], settings, site, hasKe
         el(
           'div',
           { class: 'grid' },
+          el('span', { text: 'Mode' }),
+          modeSel,
           el('span', { text: 'Model id' }),
           modelInput,
           el('span', { text: 'Host URL' }),

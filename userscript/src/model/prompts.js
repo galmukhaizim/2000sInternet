@@ -25,8 +25,11 @@ Rules:
 - Never use display:none. Never use external url(). No @import.
 - At most 20 rules.`;
 
-export function designMessages({ summaryText, manifestText, style }) {
-  const user = [`STYLE: ${describeStyle(style)}`, '', manifestText, '', 'PAGE SUMMARY:', summaryText, '', 'Write the CSS now.'].join('\n');
+export const ENHANCE_INSTRUCTIONS = `A base design in this STYLE is ALREADY applied to body, links, headings, header, nav, main, sidebar, footer, buttons, inputs, images and tables. Do not restyle those again.
+Add 10 to 20 extra rules ONLY for the site-specific elements named in the PAGE SUMMARY (cards, posts, meta lines, prices, badges, tags, menus, widgets, comments, thumbnails) so they match the style: use the palette, borders, textures and fonts of the style; give small elements icons with var(--icon-NAME); request missing icons with /* icon-request */.`;
+
+export function designMessages({ summaryText, manifestText, style, enhance = false }) {
+  const user = [`STYLE: ${describeStyle(style)}`, '', manifestText, '', 'PAGE SUMMARY:', summaryText, '', enhance ? ENHANCE_INSTRUCTIONS : '', enhance ? 'Write the extra CSS rules now.' : 'Write the CSS now.'].filter((x, i, a) => x !== '' || a[i - 1] !== '').join('\n');
   return [
     { role: 'system', content: DESIGN_SYSTEM_PROMPT },
     { role: 'user', content: user },

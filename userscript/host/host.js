@@ -12,7 +12,7 @@
 import { CreateMLCEngine, prebuiltAppConfig, modelLibURLPrefix, modelVersion } from '@mlc-ai/web-llm';
 
 const NS = 'retro-web';
-const VERSION = '0.3.0';
+const VERSION = '0.4.0';
 const statusEl = document.getElementById('status');
 const logEl = document.getElementById('log');
 

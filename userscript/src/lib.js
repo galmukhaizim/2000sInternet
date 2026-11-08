@@ -14,3 +14,4 @@ export { DESIGN_SYSTEM_PROMPT, REPAIR_SYSTEM_PROMPT, designMessages, repairMessa
 export { inspectPage, snapshotVisibility, renderReport, createInspectorMeasure, contrastRatio, parseColor } from './repair/inspect.js';
 export { buildFallbackCss } from './repair/fallbacks.js';
 export { runRepairLoop, trimCssForReport } from './repair/loop.js';
+export { renderPack, iconForText, selectorsFromSummary, listPackStyles, THEMES } from './packs/index.js';
