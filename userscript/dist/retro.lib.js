@@ -21,6 +21,7 @@ var RetroWebLib = (() => {
   var lib_exports = {};
   __export(lib_exports, {
     DESIGN_SYSTEM_PROMPT: () => DESIGN_SYSTEM_PROMPT,
+    GEOMETRY_PROPS: () => GEOMETRY_PROPS,
     ICON_SYSTEM_PROMPT: () => ICON_SYSTEM_PROMPT,
     LIBRARY_CSS: () => LIBRARY_CSS,
     MANIFEST: () => MANIFEST,
@@ -31,6 +32,7 @@ var RetroWebLib = (() => {
     THEMES: () => THEMES,
     VERSION: () => VERSION,
     applyClassDirectives: () => applyClassDirectives,
+    buildAllowList: () => buildAllowList,
     buildFallbackCss: () => buildFallbackCss,
     buildIconRequest: () => buildIconRequest,
     contrastRatio: () => contrastRatio,
@@ -42,12 +44,15 @@ var RetroWebLib = (() => {
     dataUriToSvg: () => dataUriToSvg,
     describeStyle: () => describeStyle,
     designMessages: () => designMessages,
+    enforceGeometry: () => enforceGeometry,
     estimateTokens: () => estimateTokens,
     extractDirectives: () => extractDirectives,
     extractSvgFromResponse: () => extractSvgFromResponse,
+    findGeometryViolations: () => findGeometryViolations,
     iconForText: () => iconForText,
     iconHash: () => iconHash,
     inspectPage: () => inspectPage,
+    issueKeys: () => issueKeys,
     libraryClassNames: () => libraryClassNames,
     libraryIconNames: () => libraryIconNames,
     libraryVarNames: () => libraryVarNames,
@@ -63,9 +68,11 @@ var RetroWebLib = (() => {
     renderReport: () => renderReport,
     renderSummary: () => renderSummary,
     repairMessages: () => repairMessages,
+    rollbackGeometry: () => rollbackGeometry,
     runRepairLoop: () => runRepairLoop,
     sanitizeSvg: () => sanitizeSvg,
     selectorsFromSummary: () => selectorsFromSummary,
+    snapshotGeometry: () => snapshotGeometry,
     snapshotVisibility: () => snapshotVisibility,
     summarizePage: () => summarizePage,
     svgToDataUri: () => svgToDataUri,
@@ -76,7 +83,7 @@ var RetroWebLib = (() => {
   });
 
   // userscript/src/config.js
-  var VERSION = "0.4.1";
+  var VERSION = "0.5.0";
   var STORAGE_KEYS = {
     apiKey: "apiKey",
     settings: "settings",
@@ -823,6 +830,37 @@ var RetroWebLib = (() => {
     const pageType = guessPageType(doc, counts, text);
     const picked = [];
     const landmarks = [];
+    const vh = M.viewport.height || 800;
+    const vwAll = M.viewport.width || 1280;
+    const scrollY = doc.defaultView ? doc.defaultView.scrollY || 0 : 0;
+    const docH = Math.max(doc.documentElement.scrollHeight || 0, body.scrollHeight || 0, vh);
+    const hasMedia = (el) => !!el.querySelector("video, audio, canvas, iframe, embed, object");
+    const textLinks = (el) => [...el.querySelectorAll("a")].filter((a) => (a.textContent || "").trim().length >= 2 && !a.querySelector("svg, img")).length;
+    const verify = (role, el) => {
+      if (!M.layout) return true;
+      const r = M.rect(el);
+      const top = r.top + scrollY;
+      const links = el.querySelectorAll("a").length;
+      const buttons = el.querySelectorAll("button, [role=button]").length;
+      const tl = textLinks(el);
+      switch (role) {
+        case "header":
+          return top < 240 && r.height <= vh * 0.35 && r.width >= vwAll * 0.5 && !hasMedia(el);
+        case "nav":
+          return tl >= 3 && tl >= 0.6 * Math.max(1, links + buttons) && !hasMedia(el) && (r.height <= vh * 0.3 || r.width <= vwAll * 0.35);
+        case "sidebar":
+          return r.height >= 240 && r.width >= 140 && r.width <= vwAll * 0.4 && !hasMedia(el);
+        case "main":
+          return r.width >= vwAll * 0.4 && (el.textContent || "").trim().length >= bodyTextLen * 0.3;
+        case "footer":
+          return top + r.height >= docH * 0.6 && r.height <= vh * 0.5 && !hasMedia(el);
+        case "search":
+          return !!el.querySelector("input") && r.width <= vwAll * 0.8;
+        default:
+          return true;
+      }
+    };
+    const bodyTextLen = (body.textContent || "").trim().length;
     for (const [role, sel, max] of LANDMARKS) {
       let cands = [];
       try {
@@ -830,7 +868,8 @@ var RetroWebLib = (() => {
       } catch {
         cands = [];
       }
-      cands = cands.filter((e) => M.isVisible(e) && !picked.includes(e) && !e.closest("retro-web-panel"));
+      const NOT_CONTAINERS = /* @__PURE__ */ new Set(["button", "a", "input", "select", "textarea", "label", "span", "img", "svg", "i", "b", "em", "strong", "li", "td", "th", "option"]);
+      cands = cands.filter((e) => !NOT_CONTAINERS.has(e.localName) && M.isVisible(e) && !picked.includes(e) && !e.closest("retro-web-panel") && verify(role, e));
       if (M.layout) {
         cands.sort((a, b) => {
           const ra = M.rect(a);
@@ -899,7 +938,7 @@ var RetroWebLib = (() => {
         if (r.top > 240 || r.height > 160 || r.width < 200) continue;
         const links = e.querySelectorAll("a").length;
         const tl = (e.textContent || "").trim().length;
-        if (links < 4 || tl > 400) continue;
+        if (links < 4 || tl > 400 || !verify("nav", e)) continue;
         const score = links * 10 - tl / 20 - r.top / 10;
         if (!best || score > best.score) best = { e, score };
       }
@@ -909,7 +948,7 @@ var RetroWebLib = (() => {
       const nav = landmarks.find((l) => l.role === "nav");
       const navEl = nav ? doc.querySelector(nav.selector) : null;
       const cand = navEl && navEl.parentElement && navEl.parentElement !== body && M.rect(navEl.parentElement).height < 220 ? navEl.parentElement : null;
-      if (cand) describe("header", cand);
+      if (cand && verify("header", cand)) describe("header", cand);
     }
     if (!have("main")) {
       let cur = body;
@@ -919,7 +958,7 @@ var RetroWebLib = (() => {
         if (!next) break;
         cur = next;
       }
-      if (cur !== body && cur.children.length >= 2 && !picked.includes(cur)) describe("main", cur);
+      if (cur !== body && cur.children.length >= 2 && !picked.includes(cur) && verify("main", cur)) describe("main", cur);
     }
     landmarks.sort((a, b) => ["header", "nav", "main", "sidebar", "footer", "search"].indexOf(a.role) - ["header", "nav", "main", "sidebar", "footer", "search"].indexOf(b.role));
     const vw = M.viewport.width;
@@ -1418,8 +1457,8 @@ var RetroWebLib = (() => {
       return res;
     };
   }
-  function classifyTargets(doc, probes, limit = 60) {
-    const info = { count: 0, landmark: false, interactive: false, textLength: 0, protected: false, media: false, mediaParent: false, flexGrid: false, root: false };
+  function classifyTargets(doc, probes, limit = 60, isAllowed = null) {
+    const info = { count: 0, landmark: false, interactive: false, textLength: 0, protected: false, media: false, mediaParent: false, flexGrid: false, root: false, sampled: 0, notAllowed: 0 };
     if (!doc) return info;
     const win = doc.defaultView;
     const seen = /* @__PURE__ */ new Set();
@@ -1443,6 +1482,8 @@ var RetroWebLib = (() => {
         if (el.localName === "retro-web-panel") info.protected = true;
         if (MEDIA_TAGS.has(el.localName)) info.media = true;
         else if (el.children && [...el.children].some((c) => MEDIA_TAGS.has(c.localName))) info.mediaParent = true;
+        info.sampled++;
+        if (isAllowed && !isAllowed(el)) info.notAllowed++;
         if (!info.flexGrid && win && sampled <= 40) {
           try {
             const d = win.getComputedStyle(el).display || "";
@@ -1587,10 +1628,12 @@ var RetroWebLib = (() => {
     if (!ctx.keyframes && !ctx.fontFace) {
       const isLayout = LAYOUT_PROPS.test(prop);
       const isSpacing = SPACING_PROPS.test(prop);
-      const t = isLayout || isSpacing || /^(font-size|line-height|border(-(top|right|bottom|left))?(-width)?|content)$/.test(prop) ? ctx.targets() : null;
+      const isBorderBox = /^(border|border-(top|right|bottom|left)|border(-(top|right|bottom|left))?-width)$/.test(prop);
+      const t = isLayout || isSpacing || isBorderBox || /^(font-size|line-height|content)$/.test(prop) ? ctx.targets() : null;
       if (t) {
         if (t.media && !MEDIA_SAFE.test(prop)) return drop("media-element");
         if (prop === "content" && !/::?(before|after|marker)/.test(ctx.selector)) return drop("content-outside-pseudo");
+        if (ctx.hasAllowList && !ctx.pseudo && (isLayout || isSpacing || isBorderBox) && t.sampled > 0 && t.notAllowed / t.sampled > 0.25) return drop("spacing-not-allowed");
         if (isLayout) {
           if (t.count > ctx.maxLayoutMatches) return drop("layout-too-broad");
           if (t.mediaParent && MEDIA_CONTAINER_RISKY.test(prop)) return drop("media-container");
@@ -1617,7 +1660,7 @@ var RetroWebLib = (() => {
     return decls.map((d) => `${d.prop}: ${d.value}${d.important ? " !important" : ""};`).join(" ");
   }
   function validateCss(text, options = {}) {
-    const { doc = null, mode = "design", forceImportant = true, maxRules = 400, maxDecls = 60, allowUnmatched = false, maxLayoutMatches = 40, maxSpacingMatches = 150 } = options;
+    const { doc = null, mode = "design", forceImportant = true, maxRules = 400, maxDecls = 60, allowUnmatched = false, maxLayoutMatches = 40, maxSpacingMatches = 150, spacingAllowed = null } = options;
     const protect = options.protect || DEFAULT_PROTECT;
     const parsed = parseCss(String(text || "").replace(/```[a-z]*/gi, ""));
     const out = { css: "", kept: 0, dropped: [], warnings: [], iconVars: /* @__PURE__ */ new Set(), varsUsed: /* @__PURE__ */ new Set(), errors: parsed.errors, mode };
@@ -1708,7 +1751,8 @@ var RetroWebLib = (() => {
           maxSpacingMatches,
           // every part targets a generated pseudo-element (decorations, not content)
           pseudo: !inKeyframes && selectorParts.every((p) => /::?(before|after|marker)(?![\w-])/.test(p)),
-          targets: () => targetsCache || (targetsCache = classifyTargets(doc, probes.length ? probes : selectorParts.map(probeSelector), 400))
+          hasAllowList: typeof spacingAllowed === "function",
+          targets: () => targetsCache || (targetsCache = classifyTargets(doc, probes.length ? probes : selectorParts.map(probeSelector), 400, typeof spacingAllowed === "function" ? spacingAllowed : null))
         };
         if (node.declarations.length > maxDecls) out.warnings.push(`truncated declarations for ${selector}`);
         const decls = node.declarations.slice(0, maxDecls).map((d) => validateDeclaration(d, ctx, out)).filter(Boolean);
@@ -1727,7 +1771,7 @@ var RetroWebLib = (() => {
     out.varsUsed = [...out.varsUsed];
     return out;
   }
-  function validateApplyClass(list, { doc, classNames = [], protect = DEFAULT_PROTECT, maxTargets = 200 } = {}) {
+  function validateApplyClass(list, { doc, classNames = [], protect = DEFAULT_PROTECT, maxTargets = 200, spacingAllowed = null } = {}) {
     const applied = [];
     const dropped = [];
     const known = new Set(classNames);
@@ -1753,6 +1797,14 @@ var RetroWebLib = (() => {
         continue;
       }
       els = els.filter((e) => !e.closest("retro-web-panel") && !LANDMARK_TAGS.has(e.localName));
+      if (typeof spacingAllowed === "function") {
+        const before = els.length;
+        els = els.filter((e) => spacingAllowed(e));
+        if (!els.length && before) {
+          dropped.push({ ...item, reason: "spacing-not-allowed" });
+          continue;
+        }
+      }
       if (!els.length) {
         dropped.push({ ...item, reason: "no-match" });
         continue;
@@ -2715,6 +2767,7 @@ Add 10 to 20 extra rules ONLY for the site-specific elements named in the PAGE S
       const parent = el.parentElement;
       if (!parent || containersSeen.has(parent) || parent.localName === "body" || parent.localName === "html") continue;
       containersSeen.add(parent);
+      if (options.unevenParents && options.unevenParents.has(parent)) continue;
       const kids = [...parent.children].filter((k) => k.localName === el.localName && isVisible(k));
       if (kids.length < 3 || kids.length > 40) continue;
       const rects = kids.map(R);
@@ -2915,11 +2968,23 @@ Add 10 to 20 extra rules ONLY for the site-specific elements named in the PAGE S
       }
       if (n > 12) add("invisible", "body", `${n} important elements hidden in total`);
     }
-    issues.sort((a, b) => b.severity - a.severity);
-    const limited = issues.slice(0, maxIssues);
+    let preexisting = 0;
+    let list = issues;
+    if (options.ignore && options.ignore.size) {
+      list = issues.filter((i) => {
+        const hit = options.ignore.has(i.type + "|" + i.selector);
+        if (hit) preexisting++;
+        return !hit;
+      });
+    }
+    list.sort((a, b) => b.severity - a.severity);
+    const limited = list.slice(0, maxIssues);
     const counts = {};
-    for (const i of issues) counts[i.type] = (counts[i.type] || 0) + 1;
-    return { issues: limited, total: issues.length, counts, text: renderReport(limited, options.tokenBudget || 600), elapsedMs: Date.now() - t0 };
+    for (const i of list) counts[i.type] = (counts[i.type] || 0) + 1;
+    return { issues: limited, total: list.length, counts, preexisting, text: renderReport(limited, options.tokenBudget || 600), elapsedMs: Date.now() - t0 };
+  }
+  function issueKeys(report) {
+    return new Set((report && report.issues ? report.issues : []).map((i) => i.type + "|" + i.selector));
   }
   function renderReport(issues, tokenBudget = 600) {
     if (!issues.length) return "no issues";
@@ -3015,11 +3080,8 @@ Add 10 to 20 extra rules ONLY for the site-specific elements named in the PAGE S
         case "edge-touch":
           push(i, `${sel} { padding-left: 8px; padding-right: 8px; }`);
           break;
-        case "spacing-inconsistent": {
-          const axis = i.axis || "y";
-          push(i, `${sel} > * { ${axis === "y" ? "margin-top: 8px; margin-bottom: 0;" : "margin-left: 6px; margin-right: 0;"} }`);
+        case "spacing-inconsistent":
           break;
-        }
         case "padding-collapsed":
           push(i, `${sel} { padding: 4px 8px; }`);
           break;
@@ -3038,14 +3100,14 @@ Add 10 to 20 extra rules ONLY for the site-specific elements named in the PAGE S
     for (const r of d.iconRequests) if (!into.iconRequests.some((x) => x.name === r.name)) into.iconRequests.push(r);
     for (const a of d.applyClass) if (!into.applyClass.some((x) => x.selector === a.selector && x.className === a.className)) into.applyClass.push(a);
   }
-  async function streamValidated({ client, messages, params, doc, mode, onChunk, signal }) {
+  async function streamValidated({ client, messages, params, doc, mode, onChunk, signal, validateOptions = {} }) {
     const streamer = new RuleStreamer();
     const result = { rawText: "", css: "", cssChunks: [], iconRequests: [], applyClass: [], dropped: [], errors: [], kept: 0, iconVars: /* @__PURE__ */ new Set(), usage: null, finish: null };
     const handle = (chunk) => {
       if (!chunk.trim()) return;
       const d = extractDirectives(chunk);
       mergeDirectives(result, d);
-      const v = validateCss(d.css, { doc, mode });
+      const v = validateCss(d.css, { doc, mode, ...validateOptions });
       result.dropped.push(...v.dropped);
       result.errors.push(...v.errors);
       result.kept += v.kept;
@@ -3073,10 +3135,10 @@ Add 10 to 20 extra rules ONLY for the site-specific elements named in the PAGE S
     result.iconVars = [...result.iconVars];
     return result;
   }
-  async function generatePatch({ client, doc, css, reportText, style, settings, onChunk, signal }) {
+  async function generatePatch({ client, doc, css, reportText, style, settings, onChunk, signal, validateOptions = {} }) {
     const messages = repairMessages({ css, reportText, style });
     const params = { temperature: Math.min(0.4, settings.temperature), topP: settings.topP, maxTokens: settings.maxPatchTokens, disableThinking: true };
-    return streamValidated({ client, messages, params, doc, mode: "patch", onChunk, signal });
+    return streamValidated({ client, messages, params, doc, mode: "patch", onChunk, signal, validateOptions });
   }
 
   // userscript/src/repair/loop.js
@@ -3112,9 +3174,9 @@ Add 10 to 20 extra rules ONLY for the site-specific elements named in the PAGE S
     return keep.sort((a, b) => a.idx - b.idx).map((s) => s.l).join("\n");
   }
   async function runRepairLoop({ client, doc, designCss, style, settings, baseline, iconVars = [], slots, signal, status = () => {
-  }, measure, inspect = inspectPage, patcher = generatePatch, settleMs = 250 }) {
+  }, measure, inspect = inspectPage, patcher = generatePatch, settleMs = 250, validateOptions = {}, unevenParents = null, ignore = null }) {
     const maxRounds = Math.max(0, Number(settings.maxRepairRounds) || 0);
-    const opts = { baseline, iconVars, measure, tolerance: settings.inspectTolerance };
+    const opts = { baseline, iconVars, measure, tolerance: settings.inspectTolerance, unevenParents, ignore };
     let patchCss = "";
     const rounds = [];
     let report = inspect(doc, opts);
@@ -3134,6 +3196,7 @@ Add 10 to 20 extra rules ONLY for the site-specific elements named in the PAGE S
           style,
           settings,
           signal,
+          validateOptions,
           onChunk: ({ css }) => slots && slots.patch.set([patchCss, css].filter(Boolean).join("\n"))
         });
       } catch (e) {
@@ -3153,11 +3216,11 @@ Add 10 to 20 extra rules ONLY for the site-specific elements named in the PAGE S
     let fixed = [];
     if (report.issues.length) {
       const fb = buildFallbackCss(report.issues, { doc });
-      let v = validateCss(fb.css, { doc, mode: "patch" });
+      let v = validateCss(fb.css, { doc, mode: "patch", ...validateOptions });
       const refused = v.dropped.filter((d) => /too-broad/.test(d.reason) && /^padding/.test(d.prop || ""));
       if (refused.length) {
         const extra = [...new Set(refused.map((d) => d.selector))].map((sel) => `${sel} { background-image: none; }`).join("\n");
-        v = validateCss(fb.css + "\n" + extra, { doc, mode: "patch" });
+        v = validateCss(fb.css + "\n" + extra, { doc, mode: "patch", ...validateOptions });
         fb.fixed.push(...refused.map((d) => ({ type: "icon-overlaps-text", selector: d.selector, note: "icon removed (too many elements for padding)" })));
       }
       fallbackCss = v.css;
@@ -3234,7 +3297,7 @@ Add 10 to 20 extra rules ONLY for the site-specific elements named in the PAGE S
       footer: { bg: "#c0c0c0", text: "#000000", border: "2px inset #ffffff", font: "var(--font-ms-sans)", size: "11px" },
       button: "bevel",
       input: "inset",
-      image: { border: "1px solid #000000", padding: "2px", bg: "#ffffff" },
+      image: { border: "1px solid #000000", bg: "#ffffff" },
       table: "bevel",
       extras: { hr: "groove", statusBar: true }
     },
@@ -3249,7 +3312,7 @@ Add 10 to 20 extra rules ONLY for the site-specific elements named in the PAGE S
       footer: { bg: "#f4f1ea", text: "#8a6d3b", border: "1px dotted #8a6d3b", size: "11px" },
       button: "flat-earth",
       input: "dotted",
-      image: { border: "1px solid #c9b99b", padding: "4px", bg: "#ffffff" },
+      image: { border: "1px solid #c9b99b", bg: "#ffffff" },
       table: "plain",
       extras: { hr: "dotted", postedBy: true }
     },
@@ -3339,7 +3402,7 @@ Add 10 to 20 extra rules ONLY for the site-specific elements named in the PAGE S
       footer: { bg: "#d3dce8", text: "#5c7099", border: "1px solid #a9b8c2", size: "10px" },
       button: "bevel",
       input: "inset",
-      image: { border: "1px solid #a9b8c2", padding: "2px", bg: "#ffffff" },
+      image: { border: "1px solid #a9b8c2", bg: "#ffffff" },
       table: "forum",
       extras: { hr: "thin", categoryBars: true, counter: true }
     },
@@ -3578,8 +3641,9 @@ Add 10 to 20 extra rules ONLY for the site-specific elements named in the PAGE S
     push(S.buttons, BUTTON[T.button] || BUTTON.bevel);
     if (BUTTON_HOVER[T.button]) push(each(S.buttons, ":hover"), BUTTON_HOVER[T.button]);
     for (const b of (data.buttons || []).slice(0, 8)) {
-      if (b.hasIcon || b.count > maxNavLinks) continue;
-      const icon = b.text && b.text.length <= 24 ? iconForText(b.text, "", null) : null;
+      if (b.hasIcon || b.count > maxNavLinks || !b.text) continue;
+      push(b.selector, BUTTON[T.button] || BUTTON.bevel);
+      const icon = b.text.length <= 24 ? iconForText(b.text, "", null) : null;
       if (icon) push(b.selector, `background-image: var(--icon-${icon}); background-repeat: no-repeat; background-position: 6px center; background-size: 16px 16px; padding-left: 26px; `);
     }
     push(S.inputs, INPUT[T.input] || INPUT.flat);
@@ -3589,7 +3653,7 @@ Add 10 to 20 extra rules ONLY for the site-specific elements named in the PAGE S
     if (T.table === "forum") applyClass.push({ selector: "table", className: "retro-table-rows" });
     const X = T.extras || {};
     if (X.hr && HR[X.hr]) push("hr", HR[X.hr]);
-    if (X.bullets) push("li", `list-style: none; background-image: var(--icon-${X.bullets}); background-repeat: no-repeat; background-position: 0 3px; background-size: 12px 12px; padding-left: 16px; `);
+    if (X.bullets) push(each(S.main, " li"), `list-style: none; background-image: var(--icon-${X.bullets}); background-repeat: no-repeat; background-position: 0 3px; background-size: 12px 12px; padding-left: 16px; `);
     if (X.counter) push(each(S.footer, "::before"), 'content: "You are visitor number 0013370"; display: block; grid-column: 1 / -1; flex: 1 1 100%; width: max-content; max-width: 100%; margin: 0 auto 8px auto; background-color: #000000; color: #00ff00; font-family: var(--font-courier); font-weight: bold; font-size: 14px; letter-spacing: 2px; border: 2px inset #808080; padding: 2px 8px; text-shadow: 0 0 4px #00ff00; ');
     if (X.underConstruction) push(each(S.main, "::before"), 'content: "UNDER CONSTRUCTION"; display: block; grid-column: 1 / -1; flex: 1 1 100%; width: 100%; height: auto; align-self: start; box-sizing: border-box; background-image: var(--bg-tile-hazard); background-color: #ffcc00; color: #000000; font-family: var(--font-arial-black); font-weight: bold; font-size: 12px; letter-spacing: 2px; line-height: 1.4; text-align: center; padding: 3px; margin-bottom: 10px; text-shadow: 1px 1px 0 #ffcc00, -1px -1px 0 #ffcc00, 1px -1px 0 #ffcc00, -1px 1px 0 #ffcc00; ');
     if (X.marquee) {
@@ -3608,6 +3672,249 @@ Add 10 to 20 extra rules ONLY for the site-specific elements named in the PAGE S
   }
   function listPackStyles() {
     return Object.keys(THEMES);
+  }
+
+  // userscript/src/repair/geometry.js
+  var MEDIA = "video, audio, canvas, iframe, embed, object";
+  var BUTTONS = 'button, [role=button], input[type=submit], input[type=button], a[class*="btn"], a[class*="button"], a[class*="cta"]';
+  var TEXT_INPUTS = "input:not([type=submit]):not([type=button]):not([type=checkbox]):not([type=radio]):not([type=hidden]):not([type=range]):not([type=file]):not([type=color]):not([type=image]), select, textarea";
+  var SKIP = /* @__PURE__ */ new Set(["script", "style", "noscript", "template", "head", "meta", "link", "title", "br", "wbr", "retro-web-panel", "svg", "path", "g", "use", "defs", "symbol"]);
+  var GEOMETRY_PROPS = /^(margin(-.*)?|padding(-.*)?|border|border-(top|right|bottom|left)|border(-(top|right|bottom|left))?-width|gap|row-gap|column-gap|(min-|max-)?(width|height)|display|position|top|left|right|bottom|inset(-.*)?|flex(-.*)?|transform|font-size|line-height|box-sizing|vertical-align|letter-spacing|text-indent|float|white-space|align-.*|justify-.*)$/;
+  function ownText(el) {
+    let t = "";
+    for (const n of el.childNodes) if (n.nodeType === 3) t += n.nodeValue;
+    return t.trim();
+  }
+  function visibleText(el) {
+    return (el.textContent || el.value || "").replace(/\s+/g, " ").trim();
+  }
+  var SECTION_TAGS = /* @__PURE__ */ new Set(["html", "body", "main", "article", "section", "aside", "header", "footer", "nav"]);
+  function mediaRoots(doc) {
+    const roots = /* @__PURE__ */ new Set();
+    for (const m of doc.querySelectorAll(MEDIA)) {
+      const p = m.parentElement;
+      if (!p || p === doc.body || SECTION_TAGS.has(p.localName)) continue;
+      roots.add(p);
+      const gp = p.parentElement;
+      if (gp && gp !== doc.body && !SECTION_TAGS.has(gp.localName) && (gp.textContent || "").trim().length < 300) roots.add(gp);
+    }
+    return [...roots];
+  }
+  function buildAllowList(doc, data = {}, overrides = {}) {
+    const M = createInspectorMeasure(doc, overrides);
+    const allowed = /* @__PURE__ */ new Set();
+    const roots = mediaRoots(doc);
+    const inMedia = (el) => roots.some((r) => r.contains(el));
+    const small = (el) => {
+      const r = M.rect(el);
+      return r.width <= 48 && r.height <= 48;
+    };
+    const positioned = (el) => /absolute|fixed|sticky/.test(M.style(el).position || "");
+    const q = (sel) => {
+      try {
+        return [...doc.querySelectorAll(sel)];
+      } catch {
+        return [];
+      }
+    };
+    if (doc.documentElement) allowed.add(doc.documentElement);
+    if (doc.body) allowed.add(doc.body);
+    const landmarks = [];
+    for (const l of data.landmarks || []) {
+      for (const el of q(l.selector)) {
+        if (inMedia(el) || el.matches(MEDIA)) continue;
+        allowed.add(el);
+        landmarks.push({ role: l.role, el });
+      }
+    }
+    for (const { role, el } of landmarks) {
+      if (role !== "nav") continue;
+      for (const a of el.querySelectorAll("a")) {
+        if (visibleText(a).length >= 2 && !a.querySelector("svg, img") && !positioned(a)) allowed.add(a);
+      }
+    }
+    for (const b of q(BUTTONS)) {
+      if (inMedia(b) || positioned(b) || small(b)) continue;
+      if (visibleText(b).length < 2 || b.querySelector("svg, img") && visibleText(b).length < 2) continue;
+      allowed.add(b);
+    }
+    for (const i of q(TEXT_INPUTS)) if (!inMedia(i) && !positioned(i)) allowed.add(i);
+    for (const hr of q("hr")) allowed.add(hr);
+    for (const h of q("h1, h2, h3, h4, h5, h6")) if (visibleText(h).length >= 2 && !h.closest("nav") && !inMedia(h) && !positioned(h)) allowed.add(h);
+    const mains = landmarks.filter((l) => l.role === "main").map((l) => l.el);
+    for (const main of mains) for (const li of main.querySelectorAll("li")) if (ownText(li).length >= 2 && !li.closest("nav") && !inMedia(li)) allowed.add(li);
+    return { allowed, isAllowed: (el) => allowed.has(el), mediaRoots: roots, landmarks };
+  }
+  function snapshotGeometry(doc, overrides = {}, { limit = 3e3, isAllowed = () => false } = {}) {
+    const M = createInspectorMeasure(doc, overrides);
+    const roots = mediaRoots(doc);
+    const inMedia = (el) => roots.some((r) => r.contains(el));
+    const entries = /* @__PURE__ */ new Map();
+    const parents = /* @__PURE__ */ new Map();
+    const all = [...doc.querySelectorAll("body *")].filter((e) => !SKIP.has(e.localName) && !e.closest("retro-web-panel")).slice(0, limit);
+    const gapsByParent = /* @__PURE__ */ new Map();
+    for (const el of all) {
+      const st = M.style(el);
+      if (st.display === "none" || st.visibility === "hidden") continue;
+      const r = M.rect(el);
+      if (r.width <= 0 || r.height <= 0) continue;
+      const pos = st.position || "static";
+      const e = {
+        left: r.left,
+        top: r.top,
+        width: r.width,
+        height: r.height,
+        small: r.width <= 48 && r.height <= 48,
+        positioned: /absolute|fixed|sticky/.test(pos),
+        inMedia: inMedia(el),
+        allowed: isAllowed(el)
+      };
+      e.candidate = !e.allowed && (e.small || e.positioned || e.inMedia);
+      entries.set(el, e);
+      const p = el.parentElement;
+      if (p) {
+        if (e.candidate && !parents.has(p)) {
+          const ps = M.style(p);
+          parents.set(p, { padL: parseFloat(ps.paddingLeft) || 0, padT: parseFloat(ps.paddingTop) || 0, bL: parseFloat(ps.borderLeftWidth) || 0, bT: parseFloat(ps.borderTopWidth) || 0, left: M.rect(p).left, top: M.rect(p).top });
+        }
+        let g = gapsByParent.get(p);
+        if (!g) {
+          g = { tag: el.localName, rects: [], mixed: false };
+          gapsByParent.set(p, g);
+        }
+        if (g.tag !== el.localName) g.mixed = true;
+        g.rects.push(r);
+      }
+    }
+    const unevenParents = /* @__PURE__ */ new Set();
+    for (const [p, g] of gapsByParent) {
+      if (g.mixed || g.rects.length < 3) continue;
+      const rs = g.rects;
+      const vertical = rs.every((r, i) => i === 0 || r.top >= rs[i - 1].bottom - 2);
+      const horizontal = !vertical && rs.every((r, i) => i === 0 || r.left >= rs[i - 1].right - 2);
+      if (!vertical && !horizontal) continue;
+      const gaps = rs.slice(1).map((r, i) => vertical ? r.top - rs[i].bottom : r.left - rs[i].right);
+      if (Math.max(...gaps) - Math.min(...gaps) > 12) unevenParents.add(p);
+    }
+    return { entries, parents, unevenParents, viewport: M.viewport };
+  }
+  function findGeometryViolations(snapshot, doc, overrides = {}, { sizeTolerance = 4, moveTolerance = 6, mediaTolerance = 2 } = {}) {
+    const M = createInspectorMeasure(doc, overrides);
+    const out = [];
+    const parentNow = /* @__PURE__ */ new Map();
+    for (const [el, b] of snapshot.entries) {
+      if (!b.candidate || !el.isConnected) continue;
+      const st = M.style(el);
+      if (st.display === "none" || st.visibility === "hidden") continue;
+      const r = M.rect(el);
+      if (r.width <= 0 && r.height <= 0) continue;
+      const tol = b.inMedia ? mediaTolerance : sizeTolerance;
+      const dw = r.width - b.width;
+      const dh = r.height - b.height;
+      let kind = null;
+      if (Math.abs(dw) > tol || Math.abs(dh) > tol) kind = "resized";
+      else {
+        const p = el.parentElement;
+        const pb = p && snapshot.parents.get(p);
+        if (pb) {
+          let pn = parentNow.get(p);
+          if (!pn) {
+            const ps = M.style(p);
+            const pr = M.rect(p);
+            pn = { padL: parseFloat(ps.paddingLeft) || 0, padT: parseFloat(ps.paddingTop) || 0, bL: parseFloat(ps.borderLeftWidth) || 0, bT: parseFloat(ps.borderTopWidth) || 0, left: pr.left, top: pr.top };
+            parentNow.set(p, pn);
+          }
+          const expectX = pn.padL - pb.padL + (pn.bL - pb.bL);
+          const expectY = pn.padT - pb.padT + (pn.bT - pb.bT);
+          const relBeforeX = b.left + b.width / 2 - pb.left;
+          const relBeforeY = b.top + b.height / 2 - pb.top;
+          const relNowX = r.left + r.width / 2 - pn.left;
+          const relNowY = r.top + r.height / 2 - pn.top;
+          const dx = relNowX - relBeforeX - expectX;
+          const dy = relNowY - relBeforeY - expectY;
+          const mt = b.inMedia ? mediaTolerance : moveTolerance;
+          if (Math.abs(dx) > mt || Math.abs(dy) > mt) kind = "moved";
+          if (kind) out.push({ el, kind, dx: Math.round(dx), dy: Math.round(dy), dw: Math.round(dw), dh: Math.round(dh), inMedia: b.inMedia });
+          continue;
+        }
+      }
+      if (kind) out.push({ el, kind, dw: Math.round(dw), dh: Math.round(dh), inMedia: b.inMedia });
+    }
+    return out;
+  }
+  function serialize(nodes, indent = "") {
+    const lines = [];
+    for (const n of nodes) {
+      if (n.type === "at") {
+        if (n.statement) continue;
+        if (n.rules) lines.push(`${indent}@${n.name} ${n.prelude} {`, ...serialize(n.rules, indent + "  "), `${indent}}`);
+        else if (n.declarations && n.declarations.length) lines.push(`${indent}@${n.name} { ${n.declarations.map((d) => `${d.prop}: ${d.value}${d.important ? " !important" : ""};`).join(" ")} }`);
+      } else if (n.declarations && n.declarations.length) {
+        lines.push(`${indent}${n.selector} { ${n.declarations.map((d) => `${d.prop}: ${d.value}${d.important ? " !important" : ""};`).join(" ")} }`);
+      }
+    }
+    return lines;
+  }
+  function rollbackGeometry(css, violations, doc, { isLandmark = () => false } = {}) {
+    if (!css || !violations.length) return { css, removed: [] };
+    const { rules } = parseCss(css);
+    const removed = [];
+    const targets = [];
+    for (const v of violations) {
+      targets.push(v.el);
+      const p = v.el.parentElement;
+      if (p && !isLandmark(p)) targets.push(p);
+    }
+    const visit = (nodes, inKeyframes) => {
+      for (const n of nodes) {
+        if (n.type === "at") {
+          if (n.rules && !n.keyframes) visit(n.rules, false);
+          continue;
+        }
+        if (inKeyframes || !n.declarations) continue;
+        if (/::?(before|after|marker)/.test(n.selector)) continue;
+        let hit = false;
+        for (const part of n.selector.split(",")) {
+          const probe = probeSelector(part.trim());
+          try {
+            if (targets.some((t) => t.matches(probe))) {
+              hit = true;
+              break;
+            }
+          } catch {
+          }
+        }
+        if (!hit) continue;
+        const before = n.declarations.length;
+        const dropped = n.declarations.filter((d) => GEOMETRY_PROPS.test(d.prop)).map((d) => d.prop);
+        n.declarations = n.declarations.filter((d) => !GEOMETRY_PROPS.test(d.prop));
+        if (n.declarations.length !== before) removed.push({ selector: n.selector, props: [...new Set(dropped)] });
+      }
+    };
+    visit(rules, false);
+    return { css: serialize(rules).join("\n"), removed };
+  }
+  async function enforceGeometry({ doc, snapshot, slots, slotNames = ["design", "patch", "fallback"], measure, isLandmark, rounds = 3, settle: settle2 = () => Promise.resolve() }) {
+    const removedAll = [];
+    let violations = [];
+    for (let i = 0; i < rounds; i++) {
+      violations = findGeometryViolations(snapshot, doc, measure);
+      if (!violations.length) break;
+      let changed = false;
+      for (const name of slotNames) {
+        const slot = slots[name];
+        if (!slot || !slot.css) continue;
+        const r = rollbackGeometry(slot.css, violations, doc, { isLandmark });
+        if (r.removed.length) {
+          slot.set(r.css);
+          removedAll.push(...r.removed.map((x) => ({ ...x, slot: name })));
+          changed = true;
+        }
+      }
+      if (!changed) break;
+      await settle2();
+    }
+    return { removed: removedAll, remaining: violations.map((v) => ({ kind: v.kind, dx: v.dx, dy: v.dy, dw: v.dw, dh: v.dh, inMedia: v.inMedia })) };
   }
   return __toCommonJS(lib_exports);
 })();

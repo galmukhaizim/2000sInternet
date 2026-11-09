@@ -202,6 +202,39 @@ export function summarizePage(doc = document, options = {}) {
   // ---- landmarks ----
   const picked = [];
   const landmarks = [];
+  const vh = M.viewport.height || 800;
+  const vwAll = M.viewport.width || 1280;
+  const scrollY = doc.defaultView ? doc.defaultView.scrollY || 0 : 0;
+  const docH = Math.max(doc.documentElement.scrollHeight || 0, body.scrollHeight || 0, vh);
+  const hasMedia = (el) => !!el.querySelector('video, audio, canvas, iframe, embed, object');
+  const textLinks = (el) => [...el.querySelectorAll('a')].filter((a) => (a.textContent || '').trim().length >= 2 && !a.querySelector('svg, img')).length;
+  // Measured sanity checks so a toolbar of icon buttons is never a "nav", a
+  // player wrapper never a "sidebar", etc. Skipped when there is no layout.
+  const verify = (role, el) => {
+    if (!M.layout) return true;
+    const r = M.rect(el);
+    const top = r.top + scrollY;
+    const links = el.querySelectorAll('a').length;
+    const buttons = el.querySelectorAll('button, [role=button]').length;
+    const tl = textLinks(el);
+    switch (role) {
+      case 'header':
+        return top < 240 && r.height <= vh * 0.35 && r.width >= vwAll * 0.5 && !hasMedia(el);
+      case 'nav':
+        return tl >= 3 && tl >= 0.6 * Math.max(1, links + buttons) && !hasMedia(el) && (r.height <= vh * 0.3 || r.width <= vwAll * 0.35);
+      case 'sidebar':
+        return r.height >= 240 && r.width >= 140 && r.width <= vwAll * 0.4 && !hasMedia(el);
+      case 'main':
+        return r.width >= vwAll * 0.4 && (el.textContent || '').trim().length >= bodyTextLen * 0.3;
+      case 'footer':
+        return top + r.height >= docH * 0.6 && r.height <= vh * 0.5 && !hasMedia(el);
+      case 'search':
+        return !!el.querySelector('input') && r.width <= vwAll * 0.8;
+      default:
+        return true;
+    }
+  };
+  const bodyTextLen = (body.textContent || '').trim().length;
   for (const [role, sel, max] of LANDMARKS) {
     let cands = [];
     try {
@@ -209,7 +242,8 @@ export function summarizePage(doc = document, options = {}) {
     } catch {
       cands = [];
     }
-    cands = cands.filter((e) => M.isVisible(e) && !picked.includes(e) && !e.closest('retro-web-panel'));
+    const NOT_CONTAINERS = new Set(['button', 'a', 'input', 'select', 'textarea', 'label', 'span', 'img', 'svg', 'i', 'b', 'em', 'strong', 'li', 'td', 'th', 'option']);
+    cands = cands.filter((e) => !NOT_CONTAINERS.has(e.localName) && M.isVisible(e) && !picked.includes(e) && !e.closest('retro-web-panel') && verify(role, e));
     if (M.layout) {
       cands.sort((a, b) => {
         const ra = M.rect(a);
@@ -282,7 +316,7 @@ export function summarizePage(doc = document, options = {}) {
       if (r.top > 240 || r.height > 160 || r.width < 200) continue;
       const links = e.querySelectorAll('a').length;
       const tl = (e.textContent || '').trim().length;
-      if (links < 4 || tl > 400) continue;
+      if (links < 4 || tl > 400 || !verify('nav', e)) continue;
       const score = links * 10 - tl / 20 - r.top / 10;
       if (!best || score > best.score) best = { e, score };
     }
@@ -292,7 +326,7 @@ export function summarizePage(doc = document, options = {}) {
     const nav = landmarks.find((l) => l.role === 'nav');
     const navEl = nav ? doc.querySelector(nav.selector) : null;
     const cand = navEl && navEl.parentElement && navEl.parentElement !== body && M.rect(navEl.parentElement).height < 220 ? navEl.parentElement : null;
-    if (cand) describe('header', cand);
+    if (cand && verify('header', cand)) describe('header', cand);
   }
   if (!have('main')) {
     // deepest element holding most of the page text
@@ -303,7 +337,7 @@ export function summarizePage(doc = document, options = {}) {
       if (!next) break;
       cur = next;
     }
-    if (cur !== body && cur.children.length >= 2 && !picked.includes(cur)) describe('main', cur);
+    if (cur !== body && cur.children.length >= 2 && !picked.includes(cur) && verify('main', cur)) describe('main', cur);
   }
   landmarks.sort((a, b) => ['header', 'nav', 'main', 'sidebar', 'footer', 'search'].indexOf(a.role) - ['header', 'nav', 'main', 'sidebar', 'footer', 'search'].indexOf(b.role));
 

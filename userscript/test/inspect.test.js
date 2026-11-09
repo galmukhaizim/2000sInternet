@@ -189,7 +189,7 @@ describe('buildFallbackCss', () => {
       { type: 'padding-excessive', selector: 'div.d', detail: '' },
     ];
     const fb = buildFallbackCss(issues, { doc: document });
-    expect(fb.fixed).toHaveLength(issues.length + 1); // off-center svg adds a container rule too
+    expect(fb.fixed).toHaveLength(issues.length); // off-center svg adds a container rule; spacing-inconsistent adds nothing
     expect(fb.css).toContain('button.b { display: inline-flex; align-items: center;');
     expect(fb.css).toContain(':root { --icon-zebra: var(--icon-placeholder); }');
     expect(fb.css).toContain('p.c { color: #ffffff; text-shadow: none; }');
@@ -280,5 +280,17 @@ describe('icon placement checks', () => {
     expect(r.fallbackCss).not.toContain('padding-left');
     expect(r.fallbackCss).toContain('nav.big a { background-image: none !important; }');
     expect(r.report.fixedByFallback.some((f) => /icon removed/.test(f.note || ''))).toBe(true);
+  });
+});
+
+describe('spacing never added', () => {
+  it('spacing-inconsistent has no deterministic fix and is skipped for originally-uneven containers', () => {
+    document.body.innerHTML = '<ul class="list"><li>one</li><li>two</li><li>three</li><li>four</li></ul>';
+    expect(buildFallbackCss([{ type: 'spacing-inconsistent', selector: 'ul.list', detail: '' }], { doc: document }).css).toBe('');
+    const rects = { 'li:nth-child(1)': [20, 0, 200, 20], 'li:nth-child(2)': [20, 22, 200, 20], 'li:nth-child(3)': [20, 70, 200, 20], 'li:nth-child(4)': [20, 92, 200, 20] };
+    const flagged = inspectPage(document, { measure: fakeMeasure({ rects }) });
+    expect(types(flagged)).toEqual(['spacing-inconsistent']);
+    const skipped = inspectPage(document, { measure: fakeMeasure({ rects }), unevenParents: new Set([document.querySelector('ul.list')]) });
+    expect(skipped.issues).toEqual([]);
   });
 });

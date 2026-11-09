@@ -41,9 +41,9 @@ export function trimCssForReport(css, issues, maxTokens = 1400) {
   return keep.sort((a, b) => a.idx - b.idx).map((s) => s.l).join('\n');
 }
 
-export async function runRepairLoop({ client, doc, designCss, style, settings, baseline, iconVars = [], slots, signal, status = () => {}, measure, inspect = inspectPage, patcher = generatePatch, settleMs = 250 }) {
+export async function runRepairLoop({ client, doc, designCss, style, settings, baseline, iconVars = [], slots, signal, status = () => {}, measure, inspect = inspectPage, patcher = generatePatch, settleMs = 250, validateOptions = {}, unevenParents = null, ignore = null }) {
   const maxRounds = Math.max(0, Number(settings.maxRepairRounds) || 0);
-  const opts = { baseline, iconVars, measure, tolerance: settings.inspectTolerance };
+  const opts = { baseline, iconVars, measure, tolerance: settings.inspectTolerance, unevenParents, ignore };
   let patchCss = '';
   const rounds = [];
   let report = inspect(doc, opts);
@@ -63,6 +63,7 @@ export async function runRepairLoop({ client, doc, designCss, style, settings, b
         style,
         settings,
         signal,
+        validateOptions,
         onChunk: ({ css }) => slots && slots.patch.set([patchCss, css].filter(Boolean).join('\n')),
       });
     } catch (e) {
@@ -82,12 +83,12 @@ export async function runRepairLoop({ client, doc, designCss, style, settings, b
   let fixed = [];
   if (report.issues.length) {
     const fb = buildFallbackCss(report.issues, { doc });
-    let v = validateCss(fb.css, { doc, mode: 'patch' });
+    let v = validateCss(fb.css, { doc, mode: 'patch', ...validateOptions });
     // a padding fix refused as too broad leaves the icon under the text: drop the icon instead
     const refused = v.dropped.filter((d) => /too-broad/.test(d.reason) && /^padding/.test(d.prop || ''));
     if (refused.length) {
       const extra = [...new Set(refused.map((d) => d.selector))].map((sel) => `${sel} { background-image: none; }`).join('\n');
-      v = validateCss(fb.css + '\n' + extra, { doc, mode: 'patch' });
+      v = validateCss(fb.css + '\n' + extra, { doc, mode: 'patch', ...validateOptions });
       fb.fixed.push(...refused.map((d) => ({ type: 'icon-overlaps-text', selector: d.selector, note: 'icon removed (too many elements for padding)' })));
     }
     fallbackCss = v.css;

@@ -226,9 +226,13 @@ export function renderPack(styleId, data = {}, { maxNavIcons = 16, maxNavLinks =
   // controls
   push(S.buttons, BUTTON[T.button] || BUTTON.bevel);
   if (BUTTON_HOVER[T.button]) push(each(S.buttons, ':hover'), BUTTON_HOVER[T.button]);
+  // text-button groups get the full button style on their own selector too, so
+  // they keep it even when the generic `button` rule loses its spacing on pages
+  // full of icon-only buttons
   for (const b of (data.buttons || []).slice(0, 8)) {
-    if (b.hasIcon || b.count > maxNavLinks) continue;
-    const icon = b.text && b.text.length <= 24 ? iconForText(b.text, '', null) : null;
+    if (b.hasIcon || b.count > maxNavLinks || !b.text) continue;
+    push(b.selector, BUTTON[T.button] || BUTTON.bevel);
+    const icon = b.text.length <= 24 ? iconForText(b.text, '', null) : null;
     if (icon) push(b.selector, `background-image: var(--icon-${icon}); background-repeat: no-repeat; background-position: 6px center; background-size: 16px 16px; padding-left: 26px; `);
   }
   push(S.inputs, INPUT[T.input] || INPUT.flat);
@@ -240,7 +244,7 @@ export function renderPack(styleId, data = {}, { maxNavIcons = 16, maxNavLinks =
   // extras
   const X = T.extras || {};
   if (X.hr && HR[X.hr]) push('hr', HR[X.hr]);
-  if (X.bullets) push('li', `list-style: none; background-image: var(--icon-${X.bullets}); background-repeat: no-repeat; background-position: 0 3px; background-size: 12px 12px; padding-left: 16px; `);
+  if (X.bullets) push(each(S.main, ' li'), `list-style: none; background-image: var(--icon-${X.bullets}); background-repeat: no-repeat; background-position: 0 3px; background-size: 12px 12px; padding-left: 16px; `);
   if (X.counter) push(each(S.footer, '::before'), 'content: "You are visitor number 0013370"; display: block; grid-column: 1 / -1; flex: 1 1 100%; width: max-content; max-width: 100%; margin: 0 auto 8px auto; background-color: #000000; color: #00ff00; font-family: var(--font-courier); font-weight: bold; font-size: 14px; letter-spacing: 2px; border: 2px inset #808080; padding: 2px 8px; text-shadow: 0 0 4px #00ff00; ');
   // banner spans the whole width even when main is a grid/flex container
   if (X.underConstruction) push(each(S.main, '::before'), 'content: "UNDER CONSTRUCTION"; display: block; grid-column: 1 / -1; flex: 1 1 100%; width: 100%; height: auto; align-self: start; box-sizing: border-box; background-image: var(--bg-tile-hazard); background-color: #ffcc00; color: #000000; font-family: var(--font-arial-black); font-weight: bold; font-size: 12px; letter-spacing: 2px; line-height: 1.4; text-align: center; padding: 3px; margin-bottom: 10px; text-shadow: 1px 1px 0 #ffcc00, -1px -1px 0 #ffcc00, 1px -1px 0 #ffcc00, -1px 1px 0 #ffcc00; ');

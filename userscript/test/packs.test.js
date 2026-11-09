@@ -7,6 +7,17 @@ import { STYLES } from '../src/model/styles.js';
 import { summarizePage } from '../src/summarize.js';
 import { validateCss, validateApplyClass } from '../src/validate.js';
 import { libraryVarNames, libraryClassNames } from '../src/assets/index.js';
+import { buildAllowList } from '../src/repair/geometry.js';
+
+// jsdom has no layout: give the allow-list builder the sizes it needs
+const RetroAllow = (doc, data) =>
+  buildAllowList(doc, data, {
+    rect: (el) => {
+      const small = el.matches('.icon-btn, .search-btn, .menu, #guide a svg, .ask svg') ? 40 : 200;
+      return { left: 0, top: 0, width: small, height: small === 40 ? 40 : 36, right: small, bottom: 36 };
+    },
+    style: () => ({ position: 'static', display: 'block', visibility: 'visible' }),
+  });
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const fixture = (name) => fs.readFileSync(path.join(here, '..', '..', 'eval', 'fixtures', name + '.html'), 'utf8');
@@ -97,5 +108,20 @@ describe('style packs on app-like pages', () => {
     expect(pack.css).toContain('nav.main-nav a[href="/"] { background-image: none; padding-left: 8px; }');
     expect(pack.css).not.toMatch(/button\.btn-ask \{ background-image/);
     expect(pack.css).toMatch(/button\.btn-search \{ background-image: var\(--icon-search\)/);
+  });
+});
+
+describe('packs with the measured allow-list', () => {
+  it('leaves icon-only controls untouched and keeps text buttons styled', () => {
+    const { data } = load('app');
+    const allow = RetroAllow(document, data);
+    const pack = renderPack('win98', data);
+    const v = validateCss(pack.css, { doc: document, spacingAllowed: allow.isAllowed });
+    const generic = v.css.split('\n').find((l) => /(^|, )button\s*(,|\{)/.test(l.split('{')[0] + '{') && !l.includes('::') && !l.includes(':hover'));
+    expect(generic).toBeDefined();
+    expect(generic).not.toContain('padding');
+    expect(generic).not.toContain('border:');
+    expect(v.css).toMatch(/button\.create \{[^}]*padding: 3px 12px/);
+    expect(v.css).not.toMatch(/#guide a[^{]*\{[^}]*padding/);
   });
 });

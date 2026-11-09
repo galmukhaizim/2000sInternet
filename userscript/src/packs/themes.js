@@ -49,7 +49,7 @@ export const THEMES = {
     main: { bg: '#ffffff', text: '#000000', border: '2px inset #ffffff', padding: '12px' },
     sidebar: { bg: '#c0c0c0', text: '#000000', border: '2px outset #ffffff', padding: '8px' },
     footer: { bg: '#c0c0c0', text: '#000000', border: '2px inset #ffffff', font: 'var(--font-ms-sans)', size: '11px' },
-    button: 'bevel', input: 'inset', image: { border: '1px solid #000000', padding: '2px', bg: '#ffffff' }, table: 'bevel',
+    button: 'bevel', input: 'inset', image: { border: '1px solid #000000', bg: '#ffffff' }, table: 'bevel',
     extras: { hr: 'groove', statusBar: true },
   },
   'early-blog': {
@@ -61,7 +61,7 @@ export const THEMES = {
     main: { bg: '#ffffff', text: '#333333', border: '1px dotted #c9b99b', padding: '22px', narrow: '760px' },
     sidebar: { bg: '#f4f1ea', text: '#5a6b4a', border: '1px dashed #c9b99b', padding: '12px', size: '12px' },
     footer: { bg: '#f4f1ea', text: '#8a6d3b', border: '1px dotted #8a6d3b', size: '11px' },
-    button: 'flat-earth', input: 'dotted', image: { border: '1px solid #c9b99b', padding: '4px', bg: '#ffffff' }, table: 'plain',
+    button: 'flat-earth', input: 'dotted', image: { border: '1px solid #c9b99b', bg: '#ffffff' }, table: 'plain',
     extras: { hr: 'dotted', postedBy: true },
   },
   'portal-1999': {
@@ -133,7 +133,7 @@ export const THEMES = {
     main: { bg: '#ffffff', text: '#333333', border: '1px solid #a9b8c2', padding: '10px' },
     sidebar: { bg: '#d3dce8', text: '#333333', border: '1px solid #a9b8c2', padding: '8px' },
     footer: { bg: '#d3dce8', text: '#5c7099', border: '1px solid #a9b8c2', size: '10px' },
-    button: 'bevel', input: 'inset', image: { border: '1px solid #a9b8c2', padding: '2px', bg: '#ffffff' }, table: 'forum',
+    button: 'bevel', input: 'inset', image: { border: '1px solid #a9b8c2', bg: '#ffffff' }, table: 'forum',
     extras: { hr: 'thin', categoryBars: true, counter: true },
   },
   'kawaii-pixel': {

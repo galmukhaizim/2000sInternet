@@ -319,8 +319,8 @@ function createMatcher(doc, protect) {
   };
 }
 
-function classifyTargets(doc, probes, limit = 60) {
-  const info = { count: 0, landmark: false, interactive: false, textLength: 0, protected: false, media: false, mediaParent: false, flexGrid: false, root: false };
+function classifyTargets(doc, probes, limit = 60, isAllowed = null) {
+  const info = { count: 0, landmark: false, interactive: false, textLength: 0, protected: false, media: false, mediaParent: false, flexGrid: false, root: false, sampled: 0, notAllowed: 0 };
   if (!doc) return info;
   const win = doc.defaultView;
   const seen = new Set();
@@ -344,6 +344,8 @@ function classifyTargets(doc, probes, limit = 60) {
       if (el.localName === 'retro-web-panel') info.protected = true;
       if (MEDIA_TAGS.has(el.localName)) info.media = true;
       else if (el.children && [...el.children].some((c) => MEDIA_TAGS.has(c.localName))) info.mediaParent = true;
+      info.sampled++;
+      if (isAllowed && !isAllowed(el)) info.notAllowed++;
       if (!info.flexGrid && win && sampled <= 40) {
         try {
           const d = win.getComputedStyle(el).display || '';
@@ -502,10 +504,14 @@ function validateDeclaration(d, ctx, out) {
   if (!ctx.keyframes && !ctx.fontFace) {
     const isLayout = LAYOUT_PROPS.test(prop);
     const isSpacing = SPACING_PROPS.test(prop);
-    const t = isLayout || isSpacing || /^(font-size|line-height|border(-(top|right|bottom|left))?(-width)?|content)$/.test(prop) ? ctx.targets() : null;
+    const isBorderBox = /^(border|border-(top|right|bottom|left)|border(-(top|right|bottom|left))?-width)$/.test(prop);
+    const t = isLayout || isSpacing || isBorderBox || /^(font-size|line-height|content)$/.test(prop) ? ctx.targets() : null;
     if (t) {
       if (t.media && !MEDIA_SAFE.test(prop)) return drop('media-element');
       if (prop === 'content' && !/::?(before|after|marker)/.test(ctx.selector)) return drop('content-outside-pseudo');
+      // measured allow-list: geometry-changing declarations only where the page
+      // can take them (landmarks, text nav links, text buttons, inputs, …)
+      if (ctx.hasAllowList && !ctx.pseudo && (isLayout || isSpacing || isBorderBox) && t.sampled > 0 && t.notAllowed / t.sampled > 0.25) return drop('spacing-not-allowed');
       if (isLayout) {
         if (t.count > ctx.maxLayoutMatches) return drop('layout-too-broad');
         if (t.mediaParent && MEDIA_CONTAINER_RISKY.test(prop)) return drop('media-container');
@@ -536,7 +542,7 @@ function serializeDecls(decls) {
 }
 
 export function validateCss(text, options = {}) {
-  const { doc = null, mode = 'design', forceImportant = true, maxRules = 400, maxDecls = 60, allowUnmatched = false, maxLayoutMatches = 40, maxSpacingMatches = 150 } = options;
+  const { doc = null, mode = 'design', forceImportant = true, maxRules = 400, maxDecls = 60, allowUnmatched = false, maxLayoutMatches = 40, maxSpacingMatches = 150, spacingAllowed = null } = options;
   const protect = options.protect || DEFAULT_PROTECT;
   const parsed = parseCss(String(text || '').replace(/```[a-z]*/gi, ''));
   const out = { css: '', kept: 0, dropped: [], warnings: [], iconVars: new Set(), varsUsed: new Set(), errors: parsed.errors, mode };
@@ -630,7 +636,8 @@ export function validateCss(text, options = {}) {
         maxSpacingMatches,
         // every part targets a generated pseudo-element (decorations, not content)
         pseudo: !inKeyframes && selectorParts.every((p) => /::?(before|after|marker)(?![\w-])/.test(p)),
-        targets: () => targetsCache || (targetsCache = classifyTargets(doc, probes.length ? probes : selectorParts.map(probeSelector), 400)),
+        hasAllowList: typeof spacingAllowed === 'function',
+        targets: () => targetsCache || (targetsCache = classifyTargets(doc, probes.length ? probes : selectorParts.map(probeSelector), 400, typeof spacingAllowed === 'function' ? spacingAllowed : null)),
       };
       if (node.declarations.length > maxDecls) out.warnings.push(`truncated declarations for ${selector}`);
       const decls = node.declarations.slice(0, maxDecls).map((d) => validateDeclaration(d, ctx, out)).filter(Boolean);
@@ -653,7 +660,7 @@ export function validateCss(text, options = {}) {
 
 // Validates apply-class directives: the class must exist in the library and the
 // selector must match something that is not protected or a landmark root.
-export function validateApplyClass(list, { doc, classNames = [], protect = DEFAULT_PROTECT, maxTargets = 200 } = {}) {
+export function validateApplyClass(list, { doc, classNames = [], protect = DEFAULT_PROTECT, maxTargets = 200, spacingAllowed = null } = {}) {
   const applied = [];
   const dropped = [];
   const known = new Set(classNames);
@@ -679,6 +686,14 @@ export function validateApplyClass(list, { doc, classNames = [], protect = DEFAU
       continue;
     }
     els = els.filter((e) => !e.closest('retro-web-panel') && !LANDMARK_TAGS.has(e.localName));
+    if (typeof spacingAllowed === 'function') {
+      const before = els.length;
+      els = els.filter((e) => spacingAllowed(e));
+      if (!els.length && before) {
+        dropped.push({ ...item, reason: 'spacing-not-allowed' });
+        continue;
+      }
+    }
     if (!els.length) {
       dropped.push({ ...item, reason: 'no-match' });
       continue;

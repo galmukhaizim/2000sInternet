@@ -11,14 +11,14 @@ function mergeDirectives(into, d) {
 }
 
 // Shared streaming + validation loop for designs and patches.
-async function streamValidated({ client, messages, params, doc, mode, onChunk, signal }) {
+async function streamValidated({ client, messages, params, doc, mode, onChunk, signal, validateOptions = {} }) {
   const streamer = new RuleStreamer();
   const result = { rawText: '', css: '', cssChunks: [], iconRequests: [], applyClass: [], dropped: [], errors: [], kept: 0, iconVars: new Set(), usage: null, finish: null };
   const handle = (chunk) => {
     if (!chunk.trim()) return;
     const d = extractDirectives(chunk);
     mergeDirectives(result, d);
-    const v = validateCss(d.css, { doc, mode });
+    const v = validateCss(d.css, { doc, mode, ...validateOptions });
     result.dropped.push(...v.dropped);
     result.errors.push(...v.errors);
     result.kept += v.kept;
@@ -49,19 +49,19 @@ async function streamValidated({ client, messages, params, doc, mode, onChunk, s
   return result;
 }
 
-export async function generateDesign({ client, doc, summaryText, style, settings, onChunk, signal, enhance = false }) {
+export async function generateDesign({ client, doc, summaryText, style, settings, onChunk, signal, enhance = false, validateOptions = {} }) {
   const manifestText = enhance ? manifestToPromptCompact() : manifestToPrompt();
   const messages = designMessages({ summaryText, manifestText, style, enhance });
   const promptTokens = estimateTokens(messages.map((m) => m.content).join('\n'));
   const params = { temperature: settings.temperature, topP: settings.topP, maxTokens: settings.maxDesignTokens, disableThinking: true };
-  const result = await streamValidated({ client, messages, params, doc, mode: 'design', onChunk, signal });
+  const result = await streamValidated({ client, messages, params, doc, mode: 'design', onChunk, signal, validateOptions });
   result.promptTokens = promptTokens;
   result.style = style.id;
   return result;
 }
 
-export async function generatePatch({ client, doc, css, reportText, style, settings, onChunk, signal }) {
+export async function generatePatch({ client, doc, css, reportText, style, settings, onChunk, signal, validateOptions = {} }) {
   const messages = repairMessages({ css, reportText, style });
   const params = { temperature: Math.min(0.4, settings.temperature), topP: settings.topP, maxTokens: settings.maxPatchTokens, disableThinking: true };
-  return streamValidated({ client, messages, params, doc, mode: 'patch', onChunk, signal });
+  return streamValidated({ client, messages, params, doc, mode: 'patch', onChunk, signal, validateOptions });
 }

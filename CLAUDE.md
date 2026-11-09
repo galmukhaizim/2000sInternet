@@ -46,6 +46,7 @@ userscript/
       sanitize.js             SVG allowlist sanitizer
       cache.js                shared icon cache in GM storage
     repair/
+      geometry.js             geometry guard: measured allow-list, before/after snapshot, violation diff, rollback
       inspect.js              layout inspector -> structured issue report
       loop.js                 model-driven repair loop (N rounds)
       fallbacks.js            deterministic fixes for issues the model could not fix
@@ -126,6 +127,22 @@ training/                     Python pipeline (scrape, teacher dataset, repair d
    contrast-low, font-too-small, invisible. When a padding fix is refused as too
    broad, the loop removes the background icon instead (never leave an icon
    under text).
+8a. **Geometry guard** (`repair/geometry.js`, `settings.geometryGuard`). Before
+   anything is applied the pipeline builds a measured **allow-list** of elements
+   that may receive spacing/layout CSS (landmark containers, text nav links, text
+   buttons that are not icon-sized/absolutely positioned/inside a player, text
+   inputs, hr, text list items in main) and a **geometry snapshot** of every
+   visible element. `validateCss({ spacingAllowed })` drops margin/padding/border
+   /layout declarations whose selector hits >25% disallowed elements (pseudo
+   decorations exempt), so model rules are cosmetic-only off the allow-list. After
+   the pack, the quick fixes, the model rules and the repair round,
+   `enforceGeometry` re-measures: small (≤48px), positioned or in-player elements
+   that moved/resized beyond tolerance (parent padding deltas excluded) get our
+   geometry declarations rolled back out of the matching rules, up to 3 times.
+   Rollbacks are listed in the panel report. The summarizer **verifies landmark
+   candidates by geometry** (header near the top and short, nav mostly text links,
+   sidebar tall and narrow, main holds the text, footer near the bottom, nothing
+   with media) and drops the rest. Fallbacks never add spacing.
 9a. **Packs and big navs**: `renderPack` gives full button/icon treatment only to
    navs with ≤ 40 links (per nav); bigger navs (app sidebars, chip strips) get
    colors only. Links/buttons that already contain an svg/img never get a

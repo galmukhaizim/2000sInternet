@@ -17,6 +17,7 @@ const rects = {
   content: [0, 64, 1280, 900],
   post: [0, 64, 860, 900],
   sidebar: [900, 64, 380, 900],
+  'site-footer': [0, 964, 1280, 60],
 };
 function rect(el) {
   const key = el.id || [...el.classList][0];

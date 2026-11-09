@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         retro-web (dev)
 // @namespace    https://github.com/galmukhaizim/2000sInternet
-// @version      0.4.1
+// @version      0.5.0
 // @description  Dev stub: loads the locally built retro-web bundle from disk
 // @author       galmukhaizim
 // @match        *://*/*

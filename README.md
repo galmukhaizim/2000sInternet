@@ -112,12 +112,17 @@ under-construction bar, marquee, scanlines, BETA badge, Aqua traffic lights).
 The model then spends 15–30 s adding rules for the site's own elements (cards,
 posts, badges, prices) and one repair round; the page is usable throughout.
 
-The validator keeps designs from breaking pages: broad selectors may only
-change colors, backgrounds, borders and fonts; layout properties are allowed
-only on selectors matching a few dozen elements; video players, iframes and
-their containers are never moved or resized; flex/grid containers cannot be
-turned into blocks. App-like sites (YouTube, Gmail) therefore get a reskin
-rather than a new layout. If a site still looks wrong, **Original** restores
+Spacing is guarded by measurement, not guesswork. Before anything is applied
+the script decides which elements may receive padding, margins or borders
+(landmark containers, text nav links, text buttons, inputs) and records where
+every element sits; afterwards it re-measures and automatically rolls back any
+declaration that moved or resized an icon, a control, a pixel-positioned
+element or anything inside a video player. Landmarks are verified by geometry
+(a row of icon buttons is never a "nav"), broad selectors may only change
+colors, backgrounds, borders and fonts, media players are never touched, and
+the repair step never adds spacing. The **Report** lists what the guard rolled
+back. App-like sites (YouTube, Gmail) therefore get a reskin rather than a new
+layout. If a site still looks wrong, **Original** restores
 it and **Enabled on this site** turns retro-web off there.
 
 ### Sites with a strict Content Security Policy

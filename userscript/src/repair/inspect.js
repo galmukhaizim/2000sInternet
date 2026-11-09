@@ -253,6 +253,7 @@ export function inspectPage(doc, options = {}) {
     const parent = el.parentElement;
     if (!parent || containersSeen.has(parent) || parent.localName === 'body' || parent.localName === 'html') continue;
     containersSeen.add(parent);
+    if (options.unevenParents && options.unevenParents.has(parent)) continue; // was uneven before we touched it
     const kids = [...parent.children].filter((k) => k.localName === el.localName && isVisible(k));
     if (kids.length < 3 || kids.length > 40) continue;
     const rects = kids.map(R);
@@ -471,11 +472,27 @@ export function inspectPage(doc, options = {}) {
   }
 
   // ---- finalize ----
-  issues.sort((a, b) => b.severity - a.severity);
-  const limited = issues.slice(0, maxIssues);
+  // issues the original page already had are not ours to fix (and "fixing" them
+  // means changing layout we never touched)
+  let preexisting = 0;
+  let list = issues;
+  if (options.ignore && options.ignore.size) {
+    list = issues.filter((i) => {
+      const hit = options.ignore.has(i.type + '|' + i.selector);
+      if (hit) preexisting++;
+      return !hit;
+    });
+  }
+  list.sort((a, b) => b.severity - a.severity);
+  const limited = list.slice(0, maxIssues);
   const counts = {};
-  for (const i of issues) counts[i.type] = (counts[i.type] || 0) + 1;
-  return { issues: limited, total: issues.length, counts, text: renderReport(limited, options.tokenBudget || 600), elapsedMs: Date.now() - t0 };
+  for (const i of list) counts[i.type] = (counts[i.type] || 0) + 1;
+  return { issues: limited, total: list.length, counts, preexisting, text: renderReport(limited, options.tokenBudget || 600), elapsedMs: Date.now() - t0 };
+}
+
+// Set of type|selector keys from a report, for inspectPage({ ignore }).
+export function issueKeys(report) {
+  return new Set((report && report.issues ? report.issues : []).map((i) => i.type + '|' + i.selector));
 }
 
 export function renderReport(issues, tokenBudget = 600) {

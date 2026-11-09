@@ -90,11 +90,10 @@ export function buildFallbackCss(issues, { doc } = {}) {
       case 'edge-touch':
         push(i, `${sel} { padding-left: 8px; padding-right: 8px; }`);
         break;
-      case 'spacing-inconsistent': {
-        const axis = i.axis || 'y';
-        push(i, `${sel} > * { ${axis === 'y' ? 'margin-top: 8px; margin-bottom: 0;' : 'margin-left: 6px; margin-right: 0;'} }`);
+      case 'spacing-inconsistent':
+        // never impose spacing: uneven gaps are usually the page's design. The
+        // geometry guard rolls back spacing we added; nothing to add here.
         break;
-      }
       case 'padding-collapsed':
         push(i, `${sel} { padding: 4px 8px; }`);
         break;

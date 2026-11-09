@@ -8,8 +8,9 @@ import { libraryClassNames, libraryIconNames } from './assets/index.js';
 import { pickStyle, getStyle } from './model/styles.js';
 import { ModelClient, ModelUnavailableError, describeModelError } from './model/engine.js';
 import { generateDesign } from './model/designer.js';
-import { snapshotVisibility } from './repair/inspect.js';
+import { snapshotVisibility, inspectPage, issueKeys } from './repair/inspect.js';
 import { renderPack } from './packs/index.js';
+import { buildAllowList, snapshotGeometry, enforceGeometry } from './repair/geometry.js';
 import { validateCss } from './validate.js';
 import { runRepairLoop } from './repair/loop.js';
 import * as storage from './storage.js';
@@ -20,6 +21,7 @@ export function createPipeline({ doc, hostname, slots, panel, setState, getSetti
   let controller = null;
   let appliedClasses = [];
   let lastResult = null;
+  let currentAllow = null; // allow-list predicate of the run in progress
 
   function status(text, kind) {
     panel && panel.setStatus(text, kind);
@@ -83,7 +85,7 @@ export function createPipeline({ doc, hostname, slots, panel, setState, getSetti
   }
 
   function applyDirectives(list) {
-    const { applied } = validateApplyClass(list, { doc, classNames: libraryClassNames() });
+    const { applied } = validateApplyClass(list, { doc, classNames: libraryClassNames(), spacingAllowed: currentAllow });
     applyClassDirectives(applied);
     appliedClasses.push(...applied);
     return applied.map((a) => ({ selector: a.selector, className: a.className, count: a.count }));
@@ -145,6 +147,23 @@ export function createPipeline({ doc, hostname, slots, panel, setState, getSetti
       const baseline = snapshotVisibility(doc);
       const summary = summarizePage(doc, { tokenBudget: settings.summaryTokenBudget });
       const mode = settings.designMode || 'hybrid';
+      // geometry guard: what may receive spacing, and where everything was
+      const allow = buildAllowList(doc, summary.data);
+      const geo = snapshotGeometry(doc, {}, { isAllowed: allow.isAllowed });
+      const validateOptions = { spacingAllowed: allow.isAllowed };
+      currentAllow = allow.isAllowed;
+      // what the original page already got wrong is not ours to repair
+      const preexisting = settings.inspect !== false ? issueKeys(inspectPage(doc, { maxIssues: 200, tokenBudget: 50 })) : new Set();
+      const landmarkEls = new Set(allow.landmarks.map((l) => l.el));
+      const rollbacks = [];
+      const settle = (ms = 60) => new Promise((r) => (doc.defaultView || window).requestAnimationFrame(() => setTimeout(r, ms)));
+      const guard = async () => {
+        if (settings.geometryGuard === false) return;
+        await settle(30);
+        const g = await enforceGeometry({ doc, snapshot: geo, slots, isLandmark: (el) => landmarkEls.has(el), settle: () => settle(30) });
+        rollbacks.push(...g.removed);
+        return g;
+      };
 
       // 1. instant hand-made style pack (no model needed)
       let packCss = '';
@@ -152,11 +171,13 @@ export function createPipeline({ doc, hostname, slots, panel, setState, getSetti
       let quickFallbackCss = '';
       if (mode !== 'model') {
         const pack = renderPack(style.id, summary.data);
-        const v = validateCss(pack.css, { doc, mode: 'design' });
+        const v = validateCss(pack.css, { doc, mode: 'design', ...validateOptions });
         packCss = v.css;
         packRules = v.kept;
         slots.design.set(packCss);
         applyDirectives(pack.applyClass);
+        await guard();
+        packCss = slots.design.css;
         // cache right away so reloads are instant even if the model never finishes
         storage.saveSiteRecord(hostname, {
           css: packCss,
@@ -174,9 +195,10 @@ export function createPipeline({ doc, hostname, slots, panel, setState, getSetti
         if (settings.inspect !== false) {
           await new Promise((r) => setTimeout(r, 80));
           try {
-            quick = await runRepairLoop({ client: null, doc, designCss: packCss, style, settings: { ...settings, maxRepairRounds: 0 }, baseline, iconVars: [], slots, signal, status: () => {}, settleMs: 60 });
-            quickFallbackCss = quick.fallbackCss || '';
-            storage.saveSiteRecord(hostname, { fallbackCss: quickFallbackCss, report: quick.report });
+            quick = await runRepairLoop({ client: null, doc, designCss: packCss, style, settings: { ...settings, maxRepairRounds: 0 }, baseline, iconVars: [], slots, signal, status: () => {}, settleMs: 60, validateOptions, unevenParents: geo.unevenParents, ignore: preexisting });
+            await guard();
+            quickFallbackCss = slots.fallback.css || '';
+            storage.saveSiteRecord(hostname, { fallbackCss: quickFallbackCss, report: quick.report, geometryRollbacks: rollbacks.slice() });
           } catch (e) {
             console.warn('[retro-web] quick fix pass failed', e);
           }
@@ -220,6 +242,7 @@ export function createPipeline({ doc, hostname, slots, panel, setState, getSetti
         settings,
         signal,
         enhance: !!packCss,
+        validateOptions,
         onChunk: ({ css, applyClass, iconRequests, result }) => {
           slots.design.set(join(packCss, css));
           if (applyClass.length) applyDirectives(applyClass);
@@ -229,7 +252,9 @@ export function createPipeline({ doc, hostname, slots, panel, setState, getSetti
         },
       });
       if (signal.aborted) return null;
-      design.css = join(packCss, design.css);
+      slots.design.set(join(packCss, design.css));
+      await guard();
+      design.css = slots.design.css;
       design.kept += packRules;
 
       // icons: resolver (phase 4) or placeholders
@@ -259,13 +284,14 @@ export function createPipeline({ doc, hostname, slots, panel, setState, getSetti
         status('inspecting layout…');
         await new Promise((r) => setTimeout(r, settings.settleDelayMs || 0));
         const repairFn = hooks.repair || runRepairLoop;
-        const rep = await repairFn({ client: c, doc, designCss: design.css, style, settings, baseline, iconVars: [...referenced], slots, signal, status });
+        const rep = await repairFn({ client: c, doc, designCss: design.css, style, settings, baseline, iconVars: [...referenced], slots, signal, status, validateOptions, unevenParents: geo.unevenParents, ignore: preexisting });
         if (rep) {
-          patchCss = rep.patchCss || '';
-          fallbackCss = [quickFallbackCss, rep.fallbackCss || ''].filter(Boolean).join('\n');
+          slots.patch.set(rep.patchCss || '');
+          slots.fallback.set([quickFallbackCss, rep.fallbackCss || ''].filter(Boolean).join('\n'));
+          await guard();
+          patchCss = slots.patch.css;
+          fallbackCss = slots.fallback.css;
           report = rep.report || null;
-          slots.patch.set(patchCss);
-          slots.fallback.set(fallbackCss);
         }
       }
       if (signal.aborted) return null;
@@ -280,6 +306,7 @@ export function createPipeline({ doc, hostname, slots, panel, setState, getSetti
         iconResults: (iconReport.results || []).map((r) => ({ name: r.name, source: r.source, alias: r.alias, reason: r.reason })),
         style: style.id,
         stage: 'full',
+        geometryRollbacks: rollbacks,
         report,
         stats: {
           promptTokens: design.promptTokens,
@@ -349,6 +376,10 @@ export function formatReport(record) {
   if (record.iconRequests && record.iconRequests.length) L.push(`icon requests: ${record.iconRequests.map((r) => r.name).join(', ')}`);
   if (record.iconResults && record.iconResults.length) L.push(`icons: ${record.iconResults.map((r) => `${r.name}←${r.source}${r.alias ? '(' + r.alias + ')' : ''}${r.reason ? ' [' + r.reason + ']' : ''}`).join(', ')}`);
   if (record.applyClass && record.applyClass.length) L.push(`classes: ${record.applyClass.map((a) => `${a.selector}→.${a.className}`).join(', ')}`);
+  if (record.geometryRollbacks && record.geometryRollbacks.length) {
+    L.push('', `GEOMETRY GUARD: rolled back ${record.geometryRollbacks.length} declaration group(s) that moved or resized controls:`);
+    for (const r of record.geometryRollbacks.slice(0, 12)) L.push(`- ${r.selector} (${r.props.join(', ')}) in ${r.slot}`);
+  }
   const rep = record.report;
   if (rep) {
     const rounds = (rep.rounds || []).map((r) => `round ${r.round}: ${r.before}→${r.after} issues, ${r.kept} patch rules${r.error ? ' (error: ' + r.error + ')' : ''}`);
