@@ -82,6 +82,8 @@ export function buildAllowList(doc, data = {}, overrides = {}) {
   }
   for (const i of q(TEXT_INPUTS)) if (!inMedia(i) && !positioned(i)) allowed.add(i);
   for (const hr of q('hr')) allowed.add(hr);
+  // content images (not icon-sized, not pixel-positioned, not inside a player) may get a frame
+  for (const img of q('img, picture')) if (!small(img) && !positioned(img) && !inMedia(img)) allowed.add(img);
   for (const h of q('h1, h2, h3, h4, h5, h6')) if (visibleText(h).length >= 2 && !h.closest('nav') && !inMedia(h) && !positioned(h)) allowed.add(h);
   // text list items in the main content (bullets)
   const mains = landmarks.filter((l) => l.role === 'main').map((l) => l.el);

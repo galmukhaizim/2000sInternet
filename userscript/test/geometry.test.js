@@ -42,12 +42,13 @@ const PAGE = `
 <header id="top"><a class="logo" href="/">Site</a><nav class="main-nav"><a href="/">Home</a><a href="/about">About</a><a href="/contact">Contact</a></nav>
 <div class="toolbar"><button class="icon" aria-label="Search"><svg></svg></button><button class="icon" aria-label="Menu"><svg></svg></button><button class="cta">Sign in</button></div></header>
 <main id="content"><div class="player"><video></video><div class="controls"><button class="play"><svg></svg></button><div class="bar"></div></div></div>
-<p>Some text content for the page that is long enough to count as the main area.</p><ul><li>one item</li><li>two items</li></ul></main>`;
+<p>Some text content for the page that is long enough to count as the main area.</p><ul><li>one item</li><li>two items</li></ul>
+<img class="hero" alt=""><img class="tiny" alt=""></main>`;
 
 describe('allow-list', () => {
   it('allows landmarks, text nav links, text buttons, inputs and main list items; refuses icon buttons and player controls', () => {
     document.body.innerHTML = PAGE;
-    const m = measurer({ before: { 'button.icon': { rect: [0, 0, 40, 40] }, 'button.play': { rect: [0, 100, 40, 40] }, 'button.cta': { rect: [100, 0, 90, 36] } } });
+    const m = measurer({ before: { 'button.icon': { rect: [0, 0, 40, 40] }, 'button.play': { rect: [0, 100, 40, 40] }, 'button.cta': { rect: [100, 0, 90, 36] }, 'img.hero': { rect: [0, 300, 600, 300] }, 'img.tiny': { rect: [0, 700, 16, 16] } } });
     const data = { landmarks: [{ role: 'header', selector: '#top' }, { role: 'nav', selector: 'nav.main-nav' }, { role: 'main', selector: '#content' }] };
     const { isAllowed } = buildAllowList(document, data, m);
     const q = (s) => document.querySelector(s);
@@ -60,6 +61,8 @@ describe('allow-list', () => {
     expect(isAllowed(q('button.play'))).toBe(false);
     expect(isAllowed(q('div.bar'))).toBe(false);
     expect(isAllowed(q('a.logo'))).toBe(false);
+    expect(isAllowed(q('img.hero'))).toBe(true);
+    expect(isAllowed(q('img.tiny'))).toBe(false);
   });
   it('makes the validator drop spacing on selectors that hit disallowed elements', () => {
     document.body.innerHTML = PAGE;
